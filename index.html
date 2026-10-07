@@ -450,10 +450,11 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
                     <div class="note" id="usdNowNote" style="margin-top:6px">最新市值與報酬分析都用這個匯率換算。</div>
                 </div>
                 <div id="usdList"></div>
+                <button class="btn btn-ghost" id="btnUsdFlowFx" style="margin-top:10px" hidden></button>
                 <div class="import-panel" style="margin-top:12px">
                     <div class="field"><label for="usdAddName">加入美元標的</label><select id="usdAddName"></select></div>
                     <div class="field" style="margin-bottom:8px"><label for="usdCostFx">歷史成本平均匯率</label><input type="text" id="usdCostFx" inputmode="decimal" placeholder="例如 31.20"></div>
-                    <p class="note" style="margin-top:0">買入、賣出、股息都用這個匯率換算成台幣成本，之後可在上方清單修改。</p>
+                    <p class="note" style="margin-top:0">買入都用這個匯率換算成台幣成本，之後可在上方清單修改。賣出、股息用各自的當天匯率。</p>
                     <details class="howto" style="margin:0 0 10px"><summary>現有紀錄不是用 30 換算？</summary>
                         <div class="field" style="margin:8px 0 0"><label for="usdOldRate">現有紀錄當初的換算匯率</label><input type="text" id="usdOldRate" inputmode="decimal" value="30"></div>
                         <p class="note" style="margin:6px 0 0">只用來把現有的台幣金額還原成美元金額（÷ 這個匯率），不是成本匯率。</p>
@@ -462,7 +463,8 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
                 </div>
                 <div class="status" id="usdStatus"></div>
                 <details class="howto"><summary>換算規則</summary><ul style="padding-left:18px;margin:8px 0;line-height:1.7">
-                    <li>買入、賣出、股息：美元金額 × 該標的的「成本平均匯率」＝台幣成本。</li>
+                    <li>買入：美元金額 × 該標的的「成本平均匯率」＝台幣成本。</li>
+                    <li>賣出、股息：美元金額 × 當天匯率（記帳時填；舊紀錄還沒填之前暫用成本平均匯率）。</li>
                     <li>最新一筆現值：美元市值 × 「目前匯率」。</li>
                     <li>過去的現值：加入前的舊紀錄用成本平均匯率；之後新記的現值用記錄時填的匯率。</li>
                     <li>沒填成本平均匯率時，買賣改用每筆紀錄自己的匯率。</li>
@@ -508,7 +510,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div class="section-label">危險區</div>
             <div class="card"><button class="btn btn-danger" id="btnClear">清除全部紀錄</button></div>
-            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.4</p>
+            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5</p>
         </section>
     </main>
 
@@ -793,21 +795,23 @@ const fmtRate = x => (x > 0 ? (+x).toFixed(2) : '--');
 const fmtUsd = x => 'US$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(x));
 const usdCfg = name => (settings.usd && settings.usd[name]) || null;
 const assetCcy = name => (usdCfg(name) || records.some(r => r.name === name && r.ccy === 'USD') ? 'USD' : 'TWD');
-// 依設定重算美元紀錄的台幣金額：買賣股息用成本平均匯率；最新現值用目前匯率；過去現值用當時匯率（加入前的舊紀錄用成本匯率）
+// 紀錄自己的匯率；加入美元標的前用固定匯率換算的舊紀錄不算（那不是當時的真實匯率）
+const ownFx = r => (r.ccy === 'USD' && r.fx > 0 && r.fx !== ((settings.usd && settings.usd[r.name]) || {}).oldFx ? r.fx : null);
+// 賣出、股息還沒填自己匯率的筆數（暫用成本匯率）
+const pendingFlowFx = name => records.filter(r => r.ccy === 'USD' && (!name || r.name === name) && (r.type === 'sell' || r.type === 'dividend') && !ownFx(r));
+// 依設定重算美元紀錄的台幣金額：買入用成本平均匯率；賣出股息用當天匯率；最新現值用目前匯率；過去現值用當時匯率（加入前的舊紀錄用成本匯率）
 function recomputeUsd() {
     settings.usd = settings.usd || {};
     let changed = false;
     for (const r of records) if (r.ccy === 'USD' && !settings.usd[r.name]) {
-        // 換手機匯入備份時：若買賣股息都用同一個匯率，就當作成本平均匯率
-        const rates = new Set(records.filter(x => x.name === r.name && x.ccy === 'USD' && x.type !== 'current').map(x => x.fx));
+        // 換手機匯入備份時：若買入都用同一個匯率，就當作成本平均匯率
+        const rates = new Set(records.filter(x => x.name === r.name && x.ccy === 'USD' && x.type === 'buy').map(x => x.fx));
         settings.usd[r.name] = { costFx: rates.size === 1 && [...rates][0] > 0 ? [...rates][0] : null }; changed = true;
     }
     const latestCur = new Map();   // records 已依日期新→舊
     for (const r of records) if (r.ccy === 'USD' && r.type === 'current' && !latestCur.has(r.name)) latestCur.set(r.name, r.id);
-    // 紀錄自己的匯率；加入美元標的前用固定匯率換算的舊紀錄不算（那不是當時的真實匯率）
-    const realFx = r => (r.fx > 0 && r.fx !== ((settings.usd[r.name] || {}).oldFx) ? r.fx : null);
     if (!settings.usdNow) {   // 匯入備份後還沒設定目前匯率 → 先用最新一筆美元現值的匯率
-        const lc = records.find(r => r.ccy === 'USD' && r.type === 'current' && realFx(r));
+        const lc = records.find(r => r.ccy === 'USD' && r.type === 'current' && ownFx(r));
         if (lc) { settings.usdNow = lc.fx; settings.usdNowDate = lc.date; changed = true; }
     }
     if (changed) saveSettings();
@@ -815,8 +819,9 @@ function recomputeUsd() {
         if (r.ccy !== 'USD') continue;
         const cfg = settings.usd[r.name] || {};
         const rate = r.type === 'current'
-            ? (latestCur.get(r.name) === r.id ? (settings.usdNow || realFx(r) || cfg.costFx || r.fx) : (realFx(r) || cfg.costFx || r.fx || settings.usdNow))
-            : (cfg.costFx || r.fx || settings.usdNow);
+            ? (latestCur.get(r.name) === r.id ? (settings.usdNow || ownFx(r) || cfg.costFx || r.fx) : (ownFx(r) || cfg.costFx || r.fx || settings.usdNow))
+            : r.type === 'buy' ? (cfg.costFx || r.fx || settings.usdNow)
+            : (ownFx(r) || cfg.costFx || r.fx || settings.usdNow);   // 賣出、股息
         if (rate > 0) { r.rateUsed = rate; r.amount = round2(r.orig * rate); }
     }
 }
@@ -1089,10 +1094,21 @@ function analyze() {
         share: T.net > 0 ? T.div / T.net : null
     };
 
-    // 時間序列：每個估值日的組合市值
-    const snapDates = [...new Set(asc.filter(r => r.type === 'current').map(r => r.date))].sort();
+    // 時間序列：每個「完整估值日」的組合市值
+    // 只記某一檔出清（現值 0）的日子，其他標的還停在舊市值，會把好幾個月的漲跌擠進下一段，扭曲 TWR、波動與回撤，所以略過
+    const allSnapDates = [...new Set(asc.filter(r => r.type === 'current').map(r => r.date))].sort();
+    const isFullDate = d => assets.every(a => {
+        if (!a.snaps.length || assetValueAt(a, d) <= 0) return true;          // 從沒記過現值（只能用成本估）或當天沒持有
+        if (dayNum(d) - dayNum(a.firstDate) <= 7) return true;                // 剛買不久，用成本即可
+        let last = null;
+        for (const s of a.snaps) { if (s.date <= d) last = s; else break; }
+        return !!last && dayNum(d) - dayNum(last.date) <= 7;                  // 7 天內有更新現值
+    });
+    let snapDates = allSnapDates.filter(isFullDate);
+    if (snapDates.length < 2) snapDates = allSnapDates;
     const series = snapDates.map(d => ({ date: d, value: sum(assets.map(a => assetValueAt(a, d))) }));
     const twr = computeTWR(series, tradeFlows, rf);
+    if (twr) twr.skipped = allSnapDates.length - snapDates.length;
 
     // 累計淨投入（買入 − 賣出，不含股息）
     const invested = [];
@@ -1309,8 +1325,9 @@ function openRecordEditor(opts = {}) {
     $('recName').value = r ? r.name : (opts.name || '');
     $('recDate').value = r ? r.date : todayStr();
     $('recAmount').value = r ? String(Math.abs(r.ccy === 'USD' ? r.orig : r.amount)) : '';
-    $('recFx').value = r && r.fx ? r.fx : (settings.lastFx || '');
-    fxAuto = !(r && r.fx);
+    const own = r ? ownFx(r) : null;   // 舊紀錄沒有自己的匯率 → 編輯時自動抓當天匯率
+    $('recFx').value = own || (r ? '' : (settings.lastFx || ''));
+    fxAuto = !own;
     $('batchDate').value = todayStr();
     setRecType(r ? r.type : (opts.type || lastType));
     setRecCcy(r ? (r.ccy || 'TWD') : (opts.name ? assetCcy(opts.name) : 'TWD'), !!r);   // 新增時自動抓當日匯率
@@ -1325,11 +1342,11 @@ function setRecType(t) {
     if (recCcy === 'USD') refreshFxRow(true); else updateFxHint();
 }
 const recNameNow = () => { const n = cleanName($('recName').value); return n ? resolveName(n).name : ''; };
-// 美元標的：買賣股息若已設成本平均匯率就不用輸入匯率；現值則填當時匯率（預設目前匯率）
+// 美元標的：買入若已設成本平均匯率就不用輸入匯率；賣出、股息、現值填當天匯率
 function fxInputNeeded() {
     if (recCcy !== 'USD') return false;
     const cfg = usdCfg(recNameNow());
-    return recType === 'current' || !(cfg && cfg.costFx > 0);
+    return recType !== 'buy' || !(cfg && cfg.costFx > 0);
 }
 function setRecCcy(c, silent) {
     recCcy = c;
@@ -1340,10 +1357,12 @@ function setRecCcy(c, silent) {
 function refreshFxRow(silent) {
     const need = fxInputNeeded();
     $('fxRow').hidden = !need;
-    if (need && recType === 'current' && fxAuto && settings.usdNow && (normalizeDate($('recDate').value) || todayStr()) >= addDays(todayStr(), -3)) {
+    const rd = normalizeDate($('recDate').value) || todayStr();
+    if (need && fxAuto && settings.usdNow && settings.usdNowDate && Math.abs(dayNum(rd) - dayNum(settings.usdNowDate)) <= 3) {
         $('recFx').value = settings.usdNow;
-        $('fxHint').textContent = `預設為設定中的目前匯率 ${fmtRate(settings.usdNow)}；若這是最新市值，儲存後也會更新目前匯率。`;
+        $('fxHint').textContent = `預設為設定中的目前匯率 ${fmtRate(settings.usdNow)}，可改成實際成交匯率。` + (recType === 'current' ? '若這是最新市值，儲存後也會更新目前匯率。' : '');
     } else if (need && (!silent || !$('recFx').value) && fxAuto) autoFetchRecFx();
+    else if (need && !fxAuto && $('recFx').value) $('fxHint').textContent = '使用你輸入的匯率。';
     updateFxHint();
 }
 async function autoFetchRecFx(force) {
@@ -1434,7 +1453,7 @@ function saveRecord(keepOpen) {
     const saved = records.find(r => r.date === fields.date && r.name === fields.name && r.type === fields.type && r.orig === fields.orig) || fields;
     const msg = `${original ? '已更新' : '已新增'}：${res.name} ${TYPE_LABEL[recType]} ${fields.ccy ? fmtUsd(fields.orig) + ' ≈ NT$ ' : ''}${fmt(Math.abs(saved.amount ?? amount))}` + (res.changed ? `（已對應既有標的）` : '');
     toast(msg);
-    if (keepOpen) { $('recAmount').value = ''; renderNameChips(); $('recAmount').focus(); }
+    if (keepOpen) { $('recAmount').value = ''; fxAuto = true; if (recCcy === 'USD') refreshFxRow(); renderNameChips(); $('recAmount').focus(); }
     else closeSheet();
 }
 $('recDelete').addEventListener('click', () => {
@@ -1817,22 +1836,28 @@ function renderBench() {
     const cols = [{ h: '我的' }, ...(bm ? [{ h: escapeHtml(bm.name) }] : []), { h: `定存 ${settings.rf}%` }];
     const bmM = bm && bm.metrics;
     const row = (label, vals) => `<tr><td>${label}</td>${vals.map(v => `<td>${v}</td>`).join('')}</tr>`;
+    const flowSum = T.buy + T.sell + T.div, gotBack = T.sell + T.div;   // 三種情境的現金流完全相同
+    const signWan = x => `<span class="${signCls(x)}">${x > 0 ? '+' : x < 0 ? '-' : ''}${fmtWan(Math.abs(x))}</span>`;
     const pick = (mine, b, d) => (bm ? [mine, b, d] : [mine, d]);
     const colorPct = (r, signed) => r === null || r === undefined ? '--' : `<span class="${signCls(r)}">${signed ? pctSigned(r) : pct(r)}</span>`;
     $('cmpEnd').textContent = `至 ${endDate}`;
     $('cmpTable').innerHTML = `<thead><tr><th>指標</th>${cols.map(c => `<th>${c.h}</th>`).join('')}</tr></thead><tbody>
-        ${row('年化 XIRR', pick(colorPct(T.irr), colorPct(bm && bm.irr), pct(rf)))}
-        ${row('期末價值', pick(fmtWan(T.cur), bm ? fmtWan(bm.terminal) : '', fmtWan(deposit.terminal)))}
+        ${row('年化 XIRR（含息）', pick(colorPct(T.irr), colorPct(bm && bm.irr), pct(rf)))}
+        ${row('淨損益（含息）', pick(signWan(T.net), bm ? signWan(bm.terminal + flowSum) : '', signWan(deposit.terminal + flowSum)))}
+        ${row('期末市值', pick(fmtWan(T.cur), bm ? fmtWan(bm.terminal) : '', fmtWan(deposit.terminal)))}
+        ${row('已領回（股息＋賣出）', pick(fmtWan(gotBack), bm ? fmtWan(gotBack) : '', fmtWan(gotBack)))}
         ${row('年化 TWR', pick(colorPct(twr && twr.ann), colorPct(bmM && bmM.ann), pct(rf)))}
         ${row('最大回撤', pick(fmtDD(twr && twr.mdd), fmtDD(bmM && bmM.mdd), '0%'))}
         ${row('年化波動', pick(pct(twr && twr.vol), pct(bmM && bmM.vol), '0%'))}
         ${row('夏普值', pick(ratio(twr && twr.sharpe), ratio(bmM && bmM.sharpe), '--'))}
     </tbody>`;
     const diff = (x, y) => `${x >= y ? '多' : '少'} ${fmt(Math.abs(x - y))}`;
-    let note = `若把同樣的現金流存在年利率 ${settings.rf}% 的定存，至 ${endDate} 約有 ${fmt(deposit.terminal)}，你的實際市值 ${fmt(T.cur)}，${diff(T.cur, deposit.terminal)}。`;
-    if (bm) note = `若當初都改買「${bm.name}」，至 ${endDate} 約值 ${fmt(bm.terminal)}，你的實際市值${diff(T.cur, bm.terminal)}。` + note;
-    if (!twr || twr.n < 6) note += `目前只有 ${twr ? twr.n : 0} 期現值紀錄，TWR、回撤與波動度還不準，請先以 XIRR 和期末價值比較。`;
-    $('cmpNote').textContent = note + '（期末價值已扣除你歷年賣出與領息的金額，三者可直接比較。）';
+    let note = `你歷年領股息 ${fmt(T.div)}、賣出拿回 ${fmt(T.sell)}，三種情境都在同一天拿回同樣的錢，所以淨損益和 XIRR 都已含息。`;
+    if (bm) note += `若當初都改買「${bm.name}」，淨損益約 ${fmt(bm.terminal + flowSum)}，你的 ${fmt(T.net)}，${diff(T.net, bm.terminal + flowSum)}。`;
+    note += `存定存 ${settings.rf}% 則約 ${fmt(deposit.terminal + flowSum)}，你${diff(T.net, deposit.terminal + flowSum)}。`;
+    if (twr && twr.skipped) note += `TWR、回撤與波動只用所有持股都有更新現值的日期（略過 ${twr.skipped} 個只記部分標的的日期）。`;
+    if (!twr || twr.n < 6) note += `目前只有 ${twr ? twr.n : 0} 期完整的現值紀錄，TWR、回撤與波動度還不準，請先以 XIRR 和淨損益比較。`;
+    $('cmpNote').textContent = note;
 
     // 價值走勢
     if (A.series.length > 1) {
@@ -2199,10 +2224,14 @@ function renderUsdSettings() {
     $('usdList').innerHTML = names.length ? names.map(n => {
         const lc = records.find(r => r.name === n && r.type === 'current' && r.ccy === 'USD');
         const cnt = records.filter(r => r.name === n).length;
-        return `<div class="usd-row"><div class="row-main"><b>${escapeHtml(n)}</b><div class="row-sub">${lc ? `美元市值 ${fmtUsd(lc.orig)}・` : ''}${cnt} 筆</div></div>
+        const pend = pendingFlowFx(n).length;
+        return `<div class="usd-row"><div class="row-main"><b>${escapeHtml(n)}</b><div class="row-sub">${lc ? `美元市值 ${fmtUsd(lc.orig)}・` : ''}${cnt} 筆${pend ? `<br><span style="color:var(--warn,#b26a00)">${pend} 筆賣出／股息未填匯率</span>` : ''}</div></div>
             <div class="usd-fx">成本平均匯率<br><input type="text" inputmode="decimal" data-usd-cost="${escapeHtml(n)}" value="${settings.usd[n].costFx || ''}" placeholder="未設定"></div>
             <button class="link-btn" data-action="usd-remove" data-name="${escapeHtml(n)}">移除</button></div>`;
     }).join('') : '<p class="note">目前沒有美元標的，可從下方加入。</p>';
+    const pendAll = pendingFlowFx().length;
+    $('btnUsdFlowFx').hidden = !pendAll;
+    $('btnUsdFlowFx').textContent = `賣出／股息 ${pendAll} 筆套用當天匯率（需要網路）`;
     const others = [...new Set(records.map(r => r.name))].filter(n => !settings.usd[n]).sort((a, b) => a.localeCompare(b, 'zh-TW'));
     const prev = $('usdAddName').value;
     $('usdAddName').innerHTML = others.length ? others.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') : '<option value="">（沒有其他標的）</option>';
@@ -2236,13 +2265,27 @@ $('btnUsdAdd').addEventListener('click', () => {
     if (!(old > 0)) { $('usdOldRate').closest('details').open = true; $('usdOldRate').focus(); return toast('請輸入現有紀錄當初的換算匯率'); }
     const recs = records.filter(r => r.name === n && r.ccy !== 'USD');
     const nowTxt = settings.usdNow ? `最新市值用目前匯率 ${fmtRate(settings.usdNow)}` : '最新市值請再設定上方的目前匯率';
-    if (!confirm(`把「${n}」設為美元標的？\n・現有 ${recs.length} 筆紀錄 ÷ ${old} 還原成美元金額\n・成本用 ${fmtRate(cost)} 換算成台幣\n・${nowTxt}`)) return;
+    if (!confirm(`把「${n}」設為美元標的？\n・現有 ${recs.length} 筆紀錄 ÷ ${old} 還原成美元金額\n・買入用 ${fmtRate(cost)} 換算成台幣成本\n・賣出、股息可再套用當天匯率（未套用前暫用 ${fmtRate(cost)}）\n・${nowTxt}`)) return;
     recs.forEach(r => Object.assign(r, { ccy: 'USD', orig: Math.round(r.amount / old * 10000) / 10000, fx: old }));
     settings.usd = settings.usd || {};
     settings.usd[n] = { costFx: cost, oldFx: old };
     $('usdCostFx').value = '';
     saveSettings(); commit();
     toast(`已將 ${n} 設為美元標的（成本匯率 ${fmtRate(cost)}）`);
+});
+$('btnUsdFlowFx').addEventListener('click', async () => {
+    const targets = pendingFlowFx();
+    if (!targets.length) return;
+    $('btnUsdFlowFx').disabled = true;
+    let ok = 0, n = 0;
+    for (const r of targets) {
+        setStatus('usdStatus', `抓取當天匯率中… ${++n} / ${targets.length}`);
+        const fx = await fetchUsdTwd(r.date);
+        if (fx) { r.fx = fx.rate; ok++; }
+    }
+    $('btnUsdFlowFx').disabled = false;
+    commit();
+    setStatus('usdStatus', ok === targets.length ? `✅ 已套用 ${ok} 筆賣出／股息的當天匯率（市場中間價），可在明細逐筆修改` : `⚠️ 套用 ${ok} / ${targets.length} 筆，其餘抓不到匯率`, ok === targets.length ? 'ok' : 'warn');
 });
 function removeUsdAsset(n) {
     if (!confirm(`把「${n}」改回台幣標的？\n目前換算後的台幣金額會保留，美元金額會刪除。`)) return;

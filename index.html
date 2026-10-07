@@ -186,9 +186,26 @@ input[type=text], input[type=date], input[type=search], select {
     -webkit-appearance: none; appearance: none;
 }
 input[type=date] { display: block; }
+textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); color: var(--text); resize: vertical; }
+textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+details.howto { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+details.howto summary { color: var(--primary); cursor: pointer; font-weight: 600; }
+details.howto ol { padding-left: 20px; margin: 8px 0; line-height: 1.7; }
+details.howto p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
 input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .amount-wrap { position: relative; }
+.fx-row { display: flex; gap: 8px; align-items: center; }
+.fx-row input { flex: 1; }
+.fx-row .pill-btn { white-space: nowrap; }
+.fx-sub { font-size: 11px; color: var(--muted); }
+.usd-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.usd-row .row-main { flex: 1; min-width: 0; }
+.usd-row input { width: 96px; text-align: right; }
+.usd-row .usd-fx { font-size: 11px; color: var(--muted); text-align: right; }
+table.fx-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+table.fx-table th, table.fx-table td { padding: 7px 2px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+table.fx-table th:first-child, table.fx-table td:first-child { text-align: left; }
 .amount-wrap span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
 .amount-wrap input { padding-left: 46px; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); margin: 6px 0; cursor: pointer; }
@@ -381,7 +398,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div id="ana-bench" hidden>
                 <div class="card" id="benchCard"></div>
-                <input type="file" id="benchInput" accept=".csv,.txt,text/csv" hidden>
+                <input type="file" id="benchInput" accept=".csv,.txt,text/csv" multiple hidden>
                 <div class="card">
                     <div class="field" style="margin:0">
                         <label for="rfInput">定存 / 無風險利率（年利率 %）</label>
@@ -421,8 +438,36 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
                     <div class="status" id="importStatus"></div>
                     <button class="btn btn-ghost" id="btnExport">💾 匯出 / 分享 CSV 備份</button>
                     <p class="note" id="backupNote" style="margin:0"></p>
-                    <p class="note" style="margin:0">CSV 欄位：日期, 名稱, 類型, 金額。自動辨識 UTF-8 / Big5、民國年、千分位。</p>
+                    <p class="note" style="margin:0">CSV 欄位：日期, 名稱, 類型, 金額（台幣），美元標的另有：幣別, 原幣金額, 匯率。自動辨識 UTF-8 / Big5、民國年、千分位。</p>
                 </div>
+            </div>
+
+            <div class="section-label">美元計價標的</div>
+            <div class="card">
+                <div class="field">
+                    <label for="usdNow">目前匯率（1 美元 = ? 台幣）</label>
+                    <div class="fx-row"><input type="text" id="usdNow" inputmode="decimal" placeholder="例如 31.80"><button type="button" class="pill-btn" id="btnUsdNow">抓最新</button></div>
+                    <div class="note" id="usdNowNote" style="margin-top:6px">最新市值與報酬分析都用這個匯率換算。</div>
+                </div>
+                <div id="usdList"></div>
+                <div class="import-panel" style="margin-top:12px">
+                    <div class="field"><label for="usdAddName">加入美元標的</label><select id="usdAddName"></select></div>
+                    <div class="field" style="margin-bottom:8px"><label for="usdCostFx">歷史成本平均匯率</label><input type="text" id="usdCostFx" inputmode="decimal" placeholder="例如 31.20"></div>
+                    <p class="note" style="margin-top:0">買入、賣出、股息都用這個匯率換算成台幣成本，之後可在上方清單修改。</p>
+                    <details class="howto" style="margin:0 0 10px"><summary>現有紀錄不是用 30 換算？</summary>
+                        <div class="field" style="margin:8px 0 0"><label for="usdOldRate">現有紀錄當初的換算匯率</label><input type="text" id="usdOldRate" inputmode="decimal" value="30"></div>
+                        <p class="note" style="margin:6px 0 0">只用來把現有的台幣金額還原成美元金額（÷ 這個匯率），不是成本匯率。</p>
+                    </details>
+                    <button class="btn btn-secondary" id="btnUsdAdd">加入</button>
+                </div>
+                <div class="status" id="usdStatus"></div>
+                <details class="howto"><summary>換算規則</summary><ul style="padding-left:18px;margin:8px 0;line-height:1.7">
+                    <li>買入、賣出、股息：美元金額 × 該標的的「成本平均匯率」＝台幣成本。</li>
+                    <li>最新一筆現值：美元市值 × 「目前匯率」。</li>
+                    <li>過去的現值：加入前的舊紀錄用成本平均匯率；之後新記的現值用記錄時填的匯率。</li>
+                    <li>沒填成本平均匯率時，買賣改用每筆紀錄自己的匯率。</li>
+                    <li>標的詳情會分開顯示「美元報酬 XIRR」和「匯率損益」，匯率損益已含在台幣淨損益中。</li>
+                </ul></details>
             </div>
 
             <div class="section-label">標的更名 / 合併</div>
@@ -463,7 +508,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div class="section-label">危險區</div>
             <div class="card"><button class="btn btn-danger" id="btnClear">清除全部紀錄</button></div>
-            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.1</p>
+            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.4</p>
         </section>
     </main>
 
@@ -506,9 +551,18 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
                 </div>
             </div>
             <div class="field">
+                <span class="field-label">幣別</span>
+                <div class="seg" id="ccySeg"><button type="button" data-ccy="TWD" class="active">台幣</button><button type="button" data-ccy="USD">美元</button></div>
+            </div>
+            <div class="field">
                 <label for="recAmount" id="recAmountLabel">金額</label>
-                <div class="amount-wrap"><span>NT$</span><input type="text" id="recAmount" inputmode="decimal" placeholder="0" enterkeyhint="done"></div>
+                <div class="amount-wrap"><span id="amtPrefix">NT$</span><input type="text" id="recAmount" inputmode="decimal" placeholder="0" enterkeyhint="done"></div>
                 <div class="note" id="recHint" style="margin-top:6px"></div>
+            </div>
+            <div class="field" id="fxRow" hidden>
+                <label for="recFx">匯率（1 美元 = ? 台幣）</label>
+                <div class="fx-row"><input type="text" id="recFx" inputmode="decimal" placeholder="例如 31.80"><button type="button" class="pill-btn" id="btnFetchFx">抓當日匯率</button></div>
+                <div class="note" id="fxHint" style="margin-top:6px">建議填券商對帳單上的實際成交匯率；不確定時可按「抓當日匯率」（市場中間價）。</div>
             </div>
             <div class="field"><label for="recDate">日期</label><input type="date" id="recDate"></div>
             <div class="btn-row" id="recAddBtns">
@@ -522,6 +576,11 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
         </form>
         <div id="batchPane" hidden>
             <div class="field"><label for="batchDate">估值日期</label><input type="date" id="batchDate"></div>
+            <div class="field" id="batchFxField" hidden>
+                <label for="batchFx">美元匯率（1 美元 = ? 台幣）</label>
+                <div class="fx-row"><input type="text" id="batchFx" inputmode="decimal"><button type="button" class="pill-btn" id="btnBatchFx">抓匯率</button></div>
+                <div class="note" style="margin-top:6px">標示「US$」的標的請填美元市值，會用這個匯率換算成台幣。</div>
+            </div>
             <label class="check"><input type="checkbox" id="batchShowClosed">顯示已出清標的</label>
             <ul class="list" id="batchList"></ul>
             <button class="btn btn-primary" id="batchSave" style="margin-top:12px">儲存現值</button>
@@ -543,7 +602,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 /* =====================================================================
  * 1. 常數與狀態
  * ===================================================================== */
-const KEYS = { records: 'investAnalyzer.records.v1', settings: 'investAnalyzer.settings.v1', bench: 'investAnalyzer.benchmark.v1' };
+const KEYS = { records: 'investAnalyzer.records.v1', settings: 'investAnalyzer.settings.v1', bench: 'investAnalyzer.benchmark.v1', fx: 'investAnalyzer.fx.v1' };
 const TYPE_LABEL = { buy: '買入', sell: '賣出', dividend: '股息', current: '現值' };
 const TYPE_SHORT = { buy: '買', sell: '賣', dividend: '息', current: '值' };
 const TYPE_HINT = {
@@ -557,7 +616,10 @@ const HEADER_ALIASES = {
     date:   ['日期', 'date', '交易日期', '成交日期', '交易日'],
     name:   ['名稱', 'name', '標的名稱', '標的', '股票名稱', '證券名稱', '商品名稱', '基金名稱'],
     type:   ['類型', 'type', '交易類別', '類別', '交易類型', '買賣別'],
-    amount: ['金額', 'amount', '交易金額', '收付金額', '淨收付金額', '淨收付']
+    amount: ['金額', 'amount', '交易金額', '收付金額', '淨收付金額', '淨收付', '台幣金額'],
+    ccy:    ['幣別', 'currency', 'ccy', '幣種'],
+    orig:   ['原幣金額', '原幣', 'orig', '外幣金額', '美元金額'],
+    fx:     ['匯率', 'fx', 'rate', 'exchange rate']
 };
 const DEFAULT_SETTINGS = { rf: 1.7, updown: 'green', theme: 'auto', lastExport: null, showClosed: false };
 const TX_PAGE = 300;
@@ -569,7 +631,8 @@ let bench = null;               // { name, prices: [[date, price], ...] }
 let A = null;                   // 分析結果快取
 let currentTab = 'home', currentSeg = 'struct';
 let txLimit = TX_PAGE, txType = '';
-let recType = 'buy', recMode = 'single', editingId = null, lastType = 'buy';
+let recType = 'buy', recMode = 'single', editingId = null, lastType = 'buy', recCcy = 'TWD', fxAuto = true;
+let fxCache = {};                // 匯率快取 { 'YYYY-MM-DD': 31.8 }
 let assetSheetName = null, deferredInstall = null;
 const charts = {};
 
@@ -619,10 +682,22 @@ function setStatus(id, text, kind) { const el = $(id); el.textContent = text; el
 // 日期正規化 → 'YYYY-MM-DD'（支援 2024/1/5、20240105、民國 113/01/05、1130105、2024年1月5日、Excel 序號）
 function normalizeDate(v) {
     if (v == null) return null;
-    let s = String(v).trim().replace(/^民國\s*/, '');
+    let s = String(v).trim().replace(/^['＇"]+/, '').replace(/^民國\s*/, '');
     if (!s) return null;
     let y, m, d, mt;
-    if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    if ((mt = s.match(/^(\d{2,4})\s*W\s*(\d{1,2})$/i))) {                 // 週代碼 25W43 → 該週週五
+        y = +mt[1]; if (y < 100) y += 2000;
+        const jan4 = Date.UTC(y, 0, 4) / 86400000, dow = (new Date(jan4 * 86400000).getUTCDay() + 6) % 7;
+        return isoFromDay(jan4 - dow + (+mt[2] - 1) * 7 + 4);
+    }
+    if ((mt = s.match(/^(\d{2,4})\s*M\s*(\d{1,2})$/i)) || (mt = s.match(/^(\d{4})[\/\-.](\d{1,2})$/))) {   // 月代碼 25M10、2025/10 → 月底
+        y = +mt[1]; if (y < 100) y += 2000;
+        return isoFromDay(Date.UTC(y, +mt[2], 0) / 86400000);
+    }
+    if ((mt = s.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/)) && MON[mt[1].toLowerCase()]) {   // Oct 27, 2025
+        [y, m, d] = [+mt[3], MON[mt[1].toLowerCase()], +mt[2]];
+    } else if (/^\d{5}(\.\d+)?$/.test(s)) {
         const dt = new Date(Date.UTC(1899, 11, 30) + Math.floor(+s) * 86400000);
         y = dt.getUTCFullYear(); m = dt.getUTCMonth() + 1; d = dt.getUTCDate();
     } else if ((mt = s.match(/^(\d{4})(\d{2})(\d{2})$/))) {
@@ -631,7 +706,8 @@ function normalizeDate(v) {
         [y, m, d] = [+mt[1] + 1911, +mt[2], +mt[3]];
     } else if ((mt = s.match(/^(\d{2,4})\s*[\/\-.年]\s*(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})/))) {
         [y, m, d] = [+mt[1], +mt[2], +mt[3]];
-        if (y < 1911) y += 1911;
+        if (mt[1].length === 2) y = y >= 69 ? y + 1911 : y + 2000;   // 兩位數年：69 以上視為民國，其餘為 20xx
+        else if (y < 1911) y += 1911;                                  // 三位數民國年
     } else if ((mt = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/))) {
         y = +mt[3];
         if (+mt[1] > 12) { d = +mt[1]; m = +mt[2]; } else { m = +mt[1]; d = +mt[2]; }
@@ -688,7 +764,7 @@ const toCSV = rows => rows.map(r => r.map(v => { const s = String(v ?? ''); retu
  * 3. 儲存 (localStorage)
  * ===================================================================== */
 function saveRecords() {
-    try { localStorage.setItem(KEYS.records, JSON.stringify(records.map(({ date, name, type, amount }) => ({ date, name, type, amount })))); }
+    try { localStorage.setItem(KEYS.records, JSON.stringify(records.map(packRecord))); }
     catch (e) { toast('⚠️ 無法儲存資料，請匯出備份'); }
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* 忽略 */ }
 }
@@ -697,10 +773,80 @@ function loadRecords() {
         const arr = JSON.parse(localStorage.getItem(KEYS.records) || '[]');
         if (Array.isArray(arr)) arr.forEach(r => {
             const date = r && normalizeDate(r.date);
-            if (date && r.name && TYPE_LABEL[r.type] && isFinite(r.amount)) records.push({ id: nextId++, date, name: String(r.name), type: r.type, amount: +r.amount });
+            if (date && r.name && TYPE_LABEL[r.type] && isFinite(r.amount)) {
+                const rec = { id: nextId++, date, name: String(r.name), type: r.type, amount: +r.amount };
+                if (r.ccy === 'USD' && isFinite(r.orig) && r.fx > 0) Object.assign(rec, { ccy: 'USD', orig: +r.orig, fx: +r.fx });
+                records.push(rec);
+            }
         });
     } catch (e) { /* 忽略 */ }
 }
+function packRecord(r) {
+    const o = { date: r.date, name: r.name, type: r.type, amount: r.amount };
+    if (r.ccy === 'USD') Object.assign(o, { ccy: 'USD', orig: r.orig, fx: r.fx });
+    return o;
+}
+function loadFx() { try { fxCache = JSON.parse(localStorage.getItem(KEYS.fx) || '{}') || {}; } catch (e) { fxCache = {}; } }
+function saveFx() { try { localStorage.setItem(KEYS.fx, JSON.stringify(fxCache)); } catch (e) { /* 忽略 */ } }
+const round2 = x => Math.round(x * 100) / 100;
+const fmtRate = x => (x > 0 ? (+x).toFixed(2) : '--');
+const fmtUsd = x => 'US$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(x));
+const usdCfg = name => (settings.usd && settings.usd[name]) || null;
+const assetCcy = name => (usdCfg(name) || records.some(r => r.name === name && r.ccy === 'USD') ? 'USD' : 'TWD');
+// 依設定重算美元紀錄的台幣金額：買賣股息用成本平均匯率；最新現值用目前匯率；過去現值用當時匯率（加入前的舊紀錄用成本匯率）
+function recomputeUsd() {
+    settings.usd = settings.usd || {};
+    let changed = false;
+    for (const r of records) if (r.ccy === 'USD' && !settings.usd[r.name]) {
+        // 換手機匯入備份時：若買賣股息都用同一個匯率，就當作成本平均匯率
+        const rates = new Set(records.filter(x => x.name === r.name && x.ccy === 'USD' && x.type !== 'current').map(x => x.fx));
+        settings.usd[r.name] = { costFx: rates.size === 1 && [...rates][0] > 0 ? [...rates][0] : null }; changed = true;
+    }
+    const latestCur = new Map();   // records 已依日期新→舊
+    for (const r of records) if (r.ccy === 'USD' && r.type === 'current' && !latestCur.has(r.name)) latestCur.set(r.name, r.id);
+    // 紀錄自己的匯率；加入美元標的前用固定匯率換算的舊紀錄不算（那不是當時的真實匯率）
+    const realFx = r => (r.fx > 0 && r.fx !== ((settings.usd[r.name] || {}).oldFx) ? r.fx : null);
+    if (!settings.usdNow) {   // 匯入備份後還沒設定目前匯率 → 先用最新一筆美元現值的匯率
+        const lc = records.find(r => r.ccy === 'USD' && r.type === 'current' && realFx(r));
+        if (lc) { settings.usdNow = lc.fx; settings.usdNowDate = lc.date; changed = true; }
+    }
+    if (changed) saveSettings();
+    for (const r of records) {
+        if (r.ccy !== 'USD') continue;
+        const cfg = settings.usd[r.name] || {};
+        const rate = r.type === 'current'
+            ? (latestCur.get(r.name) === r.id ? (settings.usdNow || realFx(r) || cfg.costFx || r.fx) : (realFx(r) || cfg.costFx || r.fx || settings.usdNow))
+            : (cfg.costFx || r.fx || settings.usdNow);
+        if (rate > 0) { r.rateUsed = rate; r.amount = round2(r.orig * rate); }
+    }
+}
+
+// 美元兌台幣匯率（市場中間價，每日更新；來源：fawazahmed0/exchange-api，CC0）
+async function fetchUsdTwd(date) {
+    const today = todayStr();
+    const start = !date || date > today ? today : date;
+    for (let back = 0; back < 7; back++) {
+        const d = addDays(start, -back);
+        if (fxCache[d]) return { rate: fxCache[d], date: d };
+        const tag = d === today ? 'latest' : d;
+        for (const u of [`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${tag}/v1/currencies/usd.min.json`,
+                         `https://${tag}.currency-api.pages.dev/v1/currencies/usd.min.json`]) {
+            try {
+                const res = await fetch(u);
+                if (!res.ok) continue;
+                const j = await res.json();
+                const v = j && j.usd && j.usd.twd;
+                if (v > 0) {
+                    const rate = Math.round(v * 10000) / 10000, at = j.date || d;
+                    fxCache[at] = rate; saveFx();
+                    return { rate, date: at };
+                }
+            } catch (e) { /* 換下一個來源 */ }
+        }
+    }
+    return null;
+}
+
 function saveSettings() { try { localStorage.setItem(KEYS.settings, JSON.stringify(settings)); } catch (e) { /* 忽略 */ } }
 function loadSettings() { try { Object.assign(settings, JSON.parse(localStorage.getItem(KEYS.settings) || '{}')); } catch (e) { /* 忽略 */ } }
 function saveBench() { try { bench ? localStorage.setItem(KEYS.bench, JSON.stringify(bench)) : localStorage.removeItem(KEYS.bench); } catch (e) { toast('⚠️ 基準資料太大，無法儲存'); } }
@@ -711,6 +857,7 @@ function sortRecords() { records.sort((a, b) => (a.date < b.date ? 1 : a.date > 
 // 任何資料異動後呼叫：排序、儲存、重算、重繪
 function commit() {
     sortRecords();
+    recomputeUsd();
     saveRecords();
     A = analyze();
     renderCurrent();
@@ -761,9 +908,13 @@ function spanDays(flows) {
 function buildAssets(asc) {
     const m = new Map();
     for (const r of asc) {
-        if (!m.has(r.name)) m.set(r.name, { name: r.name, buy: 0, sell: 0, div: 0, flows: [], snaps: [], cur: null, curDate: null, lastTrade: null, firstDate: r.date, lastDate: r.date, count: 0 });
+        if (!m.has(r.name)) m.set(r.name, { name: r.name, buy: 0, sell: 0, div: 0, flows: [], snaps: [], cur: null, curDate: null, lastTrade: null, firstDate: r.date, lastDate: r.date, count: 0,
+                                            usd: { any: false, ok: true, flows: [], cur: 0, curDate: null, fx: null } });
         const a = m.get(r.name);
         a.count++; a.lastDate = r.date;
+        if (r.ccy === 'USD') { a.usd.any = true; if (r.type === 'current' || !a.usd.curDate) a.usd.fx = r.rateUsed || r.fx; } else if (r.amount !== 0) a.usd.ok = false;   // 匯率損益以最新現值的匯率為準
+        const uAmt = r.ccy === 'USD' ? r.orig : 0;
+        if (r.type === 'current') { a.usd.cur = uAmt; a.usd.curDate = r.date; } else a.usd.flows.push({ date: r.date, amount: uAmt });
         if (r.type === 'current') { a.snaps.push({ date: r.date, amount: r.amount }); a.cur = r.amount; a.curDate = r.date; continue; }
         if (r.type === 'buy') a.buy += r.amount; else if (r.type === 'sell') a.sell += r.amount; else a.div += r.amount;
         if (r.type !== 'dividend') { a.lastTrade = r.date; a.lastTradeType = r.type; }
@@ -893,6 +1044,16 @@ function analyze() {
         a.divYield = a.buy !== 0 ? a.div / -a.buy : null;
         a.stale = a.cur !== null && a.lastTrade !== null && a.lastTrade > a.curDate;
         a.holdDays = dayNum(a.status === 'open' ? today : a.lastDate) - dayNum(a.firstDate);
+        a.ccy = a.usd.any ? (a.usd.ok ? 'USD' : 'mixed') : 'TWD';
+        if (a.ccy === 'USD') {     // 美元計價報酬（排除匯率）與匯率損益
+            const uf = a.usd.flows.filter(f => f.amount !== 0);
+            if (a.usd.cur) uf.push({ date: a.usd.curDate, amount: a.usd.cur });
+            a.irrUsd = xirr(uf);
+            a.netUsd = sum(a.usd.flows.map(f => f.amount)) + a.usd.cur;
+            a.fxNow = a.usd.fx;
+            a.fxPnl = Math.round(a.net - a.netUsd * a.fxNow) || 0;
+            T.fxPnl = (T.fxPnl || 0) + a.fxPnl;
+        }
         T.buy += a.buy; T.sell += a.sell; T.div += a.div; T.cur += a.curVal;
         xFlowsAll.push(...fl);
     }
@@ -1135,7 +1296,7 @@ document.querySelectorAll('.sheet-head').forEach(head => {   // 下滑關閉
 /* =====================================================================
  * 7. 新增 / 編輯紀錄、批次更新現值
  * ===================================================================== */
-const recCombo = attachCombo($('recName'), () => { renderNameChips(); $('recAmount').focus(); });
+const recCombo = attachCombo($('recName'), n => { renderNameChips(); if (n) onNamePicked(n); $('recAmount').focus(); });
 
 function openRecordEditor(opts = {}) {
     editingId = opts.id ?? null;
@@ -1147,9 +1308,12 @@ function openRecordEditor(opts = {}) {
     $('recEditBtns').hidden = !r;
     $('recName').value = r ? r.name : (opts.name || '');
     $('recDate').value = r ? r.date : todayStr();
-    $('recAmount').value = r ? String(Math.abs(r.amount)) : '';
+    $('recAmount').value = r ? String(Math.abs(r.ccy === 'USD' ? r.orig : r.amount)) : '';
+    $('recFx').value = r && r.fx ? r.fx : (settings.lastFx || '');
+    fxAuto = !(r && r.fx);
     $('batchDate').value = todayStr();
     setRecType(r ? r.type : (opts.type || lastType));
+    setRecCcy(r ? (r.ccy || 'TWD') : (opts.name ? assetCcy(opts.name) : 'TWD'), !!r);   // 新增時自動抓當日匯率
     setRecMode(r ? 'single' : (opts.mode || 'single'));
     openSheet('sheetRecord');
 }
@@ -1158,6 +1322,56 @@ function setRecType(t) {
     document.querySelectorAll('#typeSeg button').forEach(b => b.classList.toggle('active', b.dataset.type === t));
     $('recAmountLabel').textContent = t === 'current' ? '目前市值' : '金額';
     $('recHint').textContent = TYPE_HINT[t];
+    if (recCcy === 'USD') refreshFxRow(true); else updateFxHint();
+}
+const recNameNow = () => { const n = cleanName($('recName').value); return n ? resolveName(n).name : ''; };
+// 美元標的：買賣股息若已設成本平均匯率就不用輸入匯率；現值則填當時匯率（預設目前匯率）
+function fxInputNeeded() {
+    if (recCcy !== 'USD') return false;
+    const cfg = usdCfg(recNameNow());
+    return recType === 'current' || !(cfg && cfg.costFx > 0);
+}
+function setRecCcy(c, silent) {
+    recCcy = c;
+    document.querySelectorAll('#ccySeg button').forEach(b => b.classList.toggle('active', b.dataset.ccy === c));
+    $('amtPrefix').textContent = c === 'USD' ? 'US$' : 'NT$';
+    refreshFxRow(silent);
+}
+function refreshFxRow(silent) {
+    const need = fxInputNeeded();
+    $('fxRow').hidden = !need;
+    if (need && recType === 'current' && fxAuto && settings.usdNow && (normalizeDate($('recDate').value) || todayStr()) >= addDays(todayStr(), -3)) {
+        $('recFx').value = settings.usdNow;
+        $('fxHint').textContent = `預設為設定中的目前匯率 ${fmtRate(settings.usdNow)}；若這是最新市值，儲存後也會更新目前匯率。`;
+    } else if (need && (!silent || !$('recFx').value) && fxAuto) autoFetchRecFx();
+    updateFxHint();
+}
+async function autoFetchRecFx(force) {
+    const date = normalizeDate($('recDate').value) || todayStr();
+    $('fxHint').textContent = '抓取匯率中…';
+    const r = await fetchUsdTwd(date);
+    if (r && (fxAuto || force)) { $('recFx').value = r.rate; fxAuto = true; }
+    $('fxHint').textContent = r ? `市場中間價 ${r.rate}（${r.date}）。若對帳單有實際成交匯率，請改填實際匯率。` : '⚠️ 抓不到匯率（可能離線），請手動輸入。';
+    updateFxHint();
+}
+function updateFxHint() {
+    if (recCcy !== 'USD') return;
+    const cfg = usdCfg(recNameNow());
+    const usd = parseAmount($('recAmount').value);
+    const fx = fxInputNeeded() ? parseAmount($('recFx').value) : (cfg && cfg.costFx);
+    $('recAmountLabel').textContent = (recType === 'current' ? '目前市值' : '金額') + (usd > 0 && fx > 0 ? `（≈ NT$ ${fmt(usd * fx)}）` : '（美元）');
+    if (!fxInputNeeded()) $('recHint').textContent = `${TYPE_HINT[recType]} 會以成本平均匯率 ${fmtRate(cfg.costFx)} 換算成台幣（可在設定修改）。`;
+    else $('recHint').textContent = TYPE_HINT[recType];
+}
+$('ccySeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setRecCcy(b.dataset.ccy); });
+$('btnFetchFx').addEventListener('click', () => autoFetchRecFx(true));
+$('recFx').addEventListener('input', () => { fxAuto = false; updateFxHint(); });
+$('recAmount').addEventListener('input', updateFxHint);
+$('recDate').addEventListener('change', () => { if (recCcy === 'USD' && fxAuto && fxInputNeeded()) refreshFxRow(); });
+$('recName').addEventListener('change', () => { if (recCcy === 'USD') refreshFxRow(true); });
+function onNamePicked(name) {
+    if (editingId === null && (records.some(r => r.name === name) || usdCfg(name))) setRecCcy(assetCcy(name));
+    else refreshFxRow();
 }
 function setRecMode(m) {
     recMode = m;
@@ -1178,6 +1392,7 @@ $('nameChips').addEventListener('click', e => {
     $('recName').value = b.dataset.name;
     recCombo.close();
     renderNameChips();
+    onNamePicked(b.dataset.name);
     $('recAmount').focus();
 });
 $('typeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setRecType(b.dataset.type); });
@@ -1196,12 +1411,28 @@ function saveRecord(keepOpen) {
     if (!res.matched && res.similar.length && !(original && original.name === res.name)) {
         if (!confirm(`「${res.name}」是新標的。\n已有相似名稱：${res.similar.slice(0, 3).join('、')}\n\n確定要新增為新標的嗎？\n（按「取消」返回修改）`)) { $('recName').focus(); return; }
     }
-    const amount = signAmount(recType, amt);
-    if (original) Object.assign(original, { date, name: res.name, type: recType, amount });
-    else records.push({ id: nextId++, date, name: res.name, type: recType, amount });
+    let fields;
+    if (recCcy === 'USD') {
+        const cfg = usdCfg(res.name);
+        const fx = fxInputNeeded() ? parseAmount($('recFx').value) : cfg.costFx;
+        if (!(fx > 0)) { toast('請輸入匯率'); $('recFx').focus(); return; }
+        const orig = signAmount(recType, amt);
+        fields = { date, name: res.name, type: recType, amount: round2(orig * fx), ccy: 'USD', orig, fx };
+        settings.usd = settings.usd || {};
+        if (!settings.usd[res.name]) settings.usd[res.name] = { costFx: null };
+        if (recType === 'current') {   // 最新一筆現值 → 同步更新目前匯率
+            const latest = records.filter(r => r.name === res.name && r.type === 'current' && r.id !== editingId).map(r => r.date).sort().pop();
+            if (!latest || date >= latest) { settings.usdNow = fx; settings.usdNowDate = date; }
+        }
+        settings.lastFx = fx; saveSettings();
+    } else fields = { date, name: res.name, type: recType, amount: signAmount(recType, amt) };
+    if (original) { delete original.ccy; delete original.orig; delete original.fx; delete original.rateUsed; Object.assign(original, fields); }
+    else records.push({ id: nextId++, ...fields });
     lastType = recType;
     commit();
-    const msg = `${original ? '已更新' : '已新增'}：${res.name} ${TYPE_LABEL[recType]} ${fmt(Math.abs(amount))}` + (res.changed ? `（已對應既有標的）` : '');
+    const amount = fields.amount;
+    const saved = records.find(r => r.date === fields.date && r.name === fields.name && r.type === fields.type && r.orig === fields.orig) || fields;
+    const msg = `${original ? '已更新' : '已新增'}：${res.name} ${TYPE_LABEL[recType]} ${fields.ccy ? fmtUsd(fields.orig) + ' ≈ NT$ ' : ''}${fmt(Math.abs(saved.amount ?? amount))}` + (res.changed ? `（已對應既有標的）` : '');
     toast(msg);
     if (keepOpen) { $('recAmount').value = ''; renderNameChips(); $('recAmount').focus(); }
     else closeSheet();
@@ -1219,14 +1450,28 @@ function renderBatch() {
     const showClosed = $('batchShowClosed').checked;
     const assets = (A ? A.assets : []).filter(a => showClosed || a.status !== 'closed')
         .sort((a, b) => (b.curVal - a.curVal) || b.lastDate.localeCompare(a.lastDate));
-    $('batchList').innerHTML = assets.length ? assets.map(a => `<li class="row" style="cursor:default">
-            <div class="row-main"><div class="row-title">${escapeHtml(a.name)}</div>
-            <div class="row-sub">${a.cur !== null ? `上次 ${fmt(a.cur)}（${a.curDate}）` : '尚無現值紀錄'}</div></div>
-            <input type="text" inputmode="decimal" data-name="${escapeHtml(a.name)}" placeholder="${a.cur !== null ? fmt(a.cur) : '市值'}" style="width:42%;text-align:right" aria-label="${escapeHtml(a.name)} 本次市值">
-        </li>`).join('') : `<li class="note center" style="padding:20px 0">還沒有任何標的，請先新增交易。</li>`;
+    const lastCur = name => records.find(r => r.name === name && r.type === 'current');   // records 已依日期新→舊
+    const anyUsd = assets.some(a => assetCcy(a.name) === 'USD');
+    $('batchFxField').hidden = !anyUsd;
+    if (anyUsd && !$('batchFx').value) { $('batchFx').value = settings.usdNow || settings.lastFx || ''; if (!settings.usdNow) fetchBatchFx(); }
+    $('batchList').innerHTML = assets.length ? assets.map(a => {
+        const usd = assetCcy(a.name) === 'USD', lc = lastCur(a.name);
+        const prev = lc ? (usd && lc.ccy === 'USD' ? `${fmtUsd(lc.orig)} @${fmtRate(lc.rateUsed || lc.fx)}` : fmt(lc.amount)) : null;
+        return `<li class="row" style="cursor:default">
+            <div class="row-main"><div class="row-title">${escapeHtml(a.name)}${usd ? ' <span class="badge">US$</span>' : ''}</div>
+            <div class="row-sub">${prev ? `上次 ${prev}（${lc.date}）` : '尚無現值紀錄'}</div></div>
+            <input type="text" inputmode="decimal" data-name="${escapeHtml(a.name)}" data-usd="${usd ? 1 : ''}" placeholder="${usd ? '美元市值' : (a.cur !== null ? fmt(a.cur) : '市值')}" style="width:42%;text-align:right" aria-label="${escapeHtml(a.name)} 本次市值">
+        </li>`;
+    }).join('') : `<li class="note center" style="padding:20px 0">還沒有任何標的，請先新增交易。</li>`;
     $('batchSave').hidden = !assets.length;
 }
 $('batchShowClosed').addEventListener('change', renderBatch);
+async function fetchBatchFx() {
+    const r = await fetchUsdTwd(normalizeDate($('batchDate').value) || todayStr());
+    if (r) $('batchFx').value = r.rate;
+}
+$('btnBatchFx').addEventListener('click', fetchBatchFx);
+$('batchDate').addEventListener('change', () => { if (!$('batchFxField').hidden) fetchBatchFx(); });
 $('batchSave').addEventListener('click', () => {
     const date = normalizeDate($('batchDate').value);
     if (!date) return toast('請選擇估值日期');
@@ -1234,7 +1479,19 @@ $('batchSave').addEventListener('click', () => {
     if (!inputs.length) return toast('請至少填一檔標的的市值');
     const bad = inputs.filter(i => isNaN(parseAmount(i.value)));
     if (bad.length) { bad[0].focus(); return toast('有金額格式不正確'); }
-    inputs.forEach(i => records.push({ id: nextId++, date, name: i.dataset.name, type: 'current', amount: Math.abs(parseAmount(i.value)) }));
+    const fx = parseAmount($('batchFx').value);
+    if (inputs.some(i => i.dataset.usd) && !(fx > 0)) { $('batchFx').focus(); return toast('請輸入美元匯率'); }
+    if (fx > 0) {
+        settings.lastFx = fx;
+        const latestUsdCur = records.filter(r => r.ccy === 'USD' && r.type === 'current').map(r => r.date).sort().pop();
+        if (inputs.some(i => i.dataset.usd) && (!latestUsdCur || date >= latestUsdCur)) { settings.usdNow = fx; settings.usdNowDate = date; }
+        saveSettings();
+    }
+    inputs.forEach(i => {
+        const v = Math.abs(parseAmount(i.value));
+        records.push(i.dataset.usd ? { id: nextId++, date, name: i.dataset.name, type: 'current', amount: round2(v * fx), ccy: 'USD', orig: v, fx }
+                                   : { id: nextId++, date, name: i.dataset.name, type: 'current', amount: v });
+    });
     commit();
     closeSheet();
     toast(`已更新 ${inputs.length} 檔標的的現值`);
@@ -1417,7 +1674,7 @@ function renderTx() {
         const amt = r.type === 'current' ? fmt(r.amount) : (r.type === 'buy' ? '-' : '+') + fmt(Math.abs(r.amount));
         html += `<li><div class="row" data-rec="${r.id}">
             <div class="avatar av-${r.type}">${TYPE_SHORT[r.type]}</div>
-            <div class="row-main"><div class="row-title">${escapeHtml(r.name)}</div><div class="row-sub">${r.date} · ${TYPE_LABEL[r.type]}</div></div>
+            <div class="row-main"><div class="row-title">${escapeHtml(r.name)}</div><div class="row-sub">${r.date} · ${TYPE_LABEL[r.type]}${r.ccy === 'USD' ? ` · ${fmtUsd(r.orig)} @${fmtRate(r.rateUsed || r.fx)}` : ''}</div></div>
             <div class="row-end"><div class="v c-${r.type === 'dividend' ? 'div' : r.type === 'current' ? 'cur' : r.type}">${amt}</div></div>
         </div></li>`;
     }
@@ -1457,7 +1714,8 @@ function renderStruct() {
         kpi('勝率（已出清）', pct(S.winRate, 0), { sub: S.closedCount ? `${S.winCount} / ${S.closedCount} 檔獲利` : '尚無已出清標的' }),
         kpi('盈虧比', ratio(S.payoff), { sub: '平均獲利 ÷ 平均虧損' }),
         kpi('獲利標的', `${S.allWin} / ${A.assets.length}`, { sub: '含持有中' }),
-        kpi('股息佔總損益', pct(divs.share, 1), { sub: '總股息 ÷ 淨損益' })
+        kpi('股息佔總損益', pct(divs.share, 1), { sub: '總股息 ÷ 淨損益' }),
+        ...(T.fxPnl !== undefined ? [kpi('美元資產匯率損益', fmtSigned(T.fxPnl), { cls: signCls(T.fxPnl), sub: '已含在淨損益中' })] : [])
     ].join('');
     $('divKpis').innerHTML = [
         kpi('累計股息', fmt(T.div), { cls: 'c-div' }),
@@ -1530,16 +1788,30 @@ function renderRisk() {
 function renderBench() {
     const th = theme(), { T, twr, deposit, endDate } = A, bm = A.bench, rf = A.rf;
     $('rfInput').value = settings.rf;
+    const pastePanel = `<div class="import-panel" id="benchPastePanel" hidden>
+            <textarea id="benchPaste" rows="6" placeholder="在 Yahoo 財經「歷史數據」頁，從表頭「日期」拖曳選取到最後一列，複製後貼到這裡"></textarea>
+            <div class="btn-row" style="margin-top:8px"><button class="btn btn-ghost" data-action="bench-paste-cancel">取消</button><button class="btn btn-primary" data-action="bench-paste-go">匯入貼上的資料</button></div>
+        </div>`;
+    const howTo = `<details class="howto"><summary>去哪裡取得基準價格？</summary><ol>
+            <li><b>Goodinfo 台灣股市資訊網（推薦）</b>：搜尋 0050 → K 線圖 → 選「周線」，價格若有「還原」選項請選還原（含息）→ 按「匯出CSV」後用「📂 匯入 CSV」；或按「匯至剪貼簿」後用「📋 貼上」。</li>
+            <li><b>證交所「發行量加權股價報酬指數」</b>：官方、已含配息的大盤指數，最適合當「大盤」基準。每次下載一個月的 CSV，可一次選多個檔案匯入。</li>
+            <li><b>證交所「個股日成交資訊」</b>：輸入 0050 逐月下載 CSV，可一次選多個檔案；但價格未含配息，0050 的報酬會被低估。</li>
+            <li><b>Yahoo 財經</b>：歷史數據表若能複製，也可直接貼上。</li>
+        </ol><p>複製時請連同表頭（日期、收盤價那一列）一起選取。之後更新只要匯入或貼上較新的資料，會自動和既有資料接上。</p></details>`;
     $('benchCard').innerHTML = bench ? `
-        <div class="card-title">比較基準 <button class="link-btn" data-action="bench-pick">更換</button></div>
+        <div class="card-title">比較基準</div>
         <div class="field"><label for="benchName">基準名稱</label><input type="text" id="benchName" value="${escapeHtml(bench.name)}"></div>
         <p class="note" style="margin:0">價格資料：${bm ? `${bm.from} ~ ${bm.to}，共 ${bm.count} 筆` : `${bench.prices.length} 筆`}</p>
-        ${bm && !bm.coverageOk ? `<p class="note" style="color:var(--warn)">⚠️ 基準資料沒有完整涵蓋你的投資期間（${A.tradeFlows[0].date} ~ ${endDate}），超出範圍的日期以最接近的價格代替。</p>` : ''}
-        <button class="btn btn-danger" data-action="bench-remove" style="margin-top:10px;min-height:40px;font-size:14px">移除基準</button>`
+        ${bm && !bm.coverageOk ? `<p class="note" style="color:var(--warn)">⚠️ 基準資料沒有完整涵蓋你的投資期間（${A.tradeFlows[0].date} ~ ${endDate}），請貼上更早或更新的價格；超出範圍的日期暫以最接近的價格代替。</p>` : ''}
+        <div class="btn-row" style="margin-top:12px"><button class="btn btn-secondary" data-action="bench-paste">📋 貼上更新</button><button class="btn btn-ghost" data-action="bench-export">💾 匯出基準</button></div>
+        ${pastePanel}
+        <div class="btn-row" style="margin-top:10px"><button class="btn btn-ghost" data-action="bench-pick" style="min-height:40px;font-size:14px">📂 改用 CSV 檔</button><button class="btn btn-danger" data-action="bench-remove" style="min-height:40px;font-size:14px">移除基準</button></div>
+        ${howTo}`
         : `<div class="card-title">比較基準（模擬回測）</div>
         <p class="note" style="margin-top:0">把你每一筆實際的買入、賣出、領息，原封不動套到基準（例如 0050 或大盤）上模擬，看「當初如果都改買基準」，現在會值多少、年化報酬多少。</p>
-        <button class="btn btn-secondary" data-action="bench-pick">📈 匯入基準價格 CSV</button>
-        <p class="note">CSV 需要「日期」與「收盤價」欄位，可從券商軟體、證交所或 Yahoo 財經下載；若有「還原 / 調整後收盤價」（含息）會優先使用。<br>也可在 Google 試算表輸入 <code>=GOOGLEFINANCE("TPE:0050","close","2015/1/1",TODAY())</code> 後下載成 CSV。</p>`;
+        <div class="btn-row"><button class="btn btn-secondary" data-action="bench-paste">📋 貼上價格表</button><button class="btn btn-ghost" data-action="bench-pick">📂 匯入 CSV</button></div>
+        ${pastePanel}
+        ${howTo}`;
 
     // 比較表
     const cols = [{ h: '我的' }, ...(bm ? [{ h: escapeHtml(bm.name) }] : []), { h: `定存 ${settings.rf}%` }];
@@ -1559,6 +1831,7 @@ function renderBench() {
     const diff = (x, y) => `${x >= y ? '多' : '少'} ${fmt(Math.abs(x - y))}`;
     let note = `若把同樣的現金流存在年利率 ${settings.rf}% 的定存，至 ${endDate} 約有 ${fmt(deposit.terminal)}，你的實際市值 ${fmt(T.cur)}，${diff(T.cur, deposit.terminal)}。`;
     if (bm) note = `若當初都改買「${bm.name}」，至 ${endDate} 約值 ${fmt(bm.terminal)}，你的實際市值${diff(T.cur, bm.terminal)}。` + note;
+    if (!twr || twr.n < 6) note += `目前只有 ${twr ? twr.n : 0} 期現值紀錄，TWR、回撤與波動度還不準，請先以 XIRR 和期末價值比較。`;
     $('cmpNote').textContent = note + '（期末價值已扣除你歷年賣出與領息的金額，三者可直接比較。）';
 
     // 價值走勢
@@ -1585,31 +1858,119 @@ $('rfInput').addEventListener('change', e => {
     if (isNaN(v) || v < -10 || v > 50) { e.target.value = settings.rf; return toast('請輸入合理的利率'); }
     settings.rf = v; saveSettings(); A = analyze(); renderAnalysis();
 });
+// 從表格資料找出「日期」與「價格」欄（支援 Yahoo 財經 港/台/美版表頭、券商與證交所 CSV）
+function pricesFromRows(rows) {
+    const norm = x => String(x ?? '').replace(/^﻿/, '').replace(/[*＊\s]/g, '').toLowerCase();
+    let hi = -1, dc = 0, pc = -1;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const h = rows[i].map(norm);
+        const d = h.findIndex(x => /^(date|datetime|日期|交易日期|交易日|交易週別?|週別|週次|時間|年月日)$/.test(x));
+        if (d < 0) continue;
+        let p = h.findIndex(x => /adj|調整|還原/.test(x));                         // 優先：調整後 / 還原收盤價（含息）
+        if (p < 0) p = h.findIndex(x => /^close$|收市|收盤|^成交價?$|^price$|價格|淨值|^nav$|指數/.test(x));
+        if (p >= 0) { hi = i; dc = d; pc = p; break; }
+    }
+    if (hi < 0) {   // 沒有表頭：只在欄位很明確時才猜（2 欄 = 日期,價格；7 欄 = Yahoo 日期,開,高,低,收,調整後收,量）
+        const cnt = new Map();
+        rows.filter(r => normalizeDate(r[0])).forEach(r => cnt.set(r.length, (cnt.get(r.length) || 0) + 1));
+        const w = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (w === 2) pc = 1; else if (w === 7) pc = 5; else return [];
+    }
+    const map = new Map();
+    for (let i = hi + 1; i < rows.length; i++) {
+        const d = normalizeDate(rows[i][dc]), v = parseAmount(rows[i][pc]);
+        if (d && v > 0) map.set(d, v);   // 配息、分割等說明列會自動略過
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+// 備援解析：不靠分隔符號，直接在文字中找日期，再取其後的數字（處理網頁複製時一格一行或用空白分隔的情況）
+const DATE_FIND = /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}|['＇]?\b\d{2,3}\/\d{1,2}\/\d{1,2}|\b\d{2,4}W\d{1,2}\b|\b[A-Z][a-z]{2,8}\.?\s+\d{1,2},\s+\d{4}/g;
+function pricesFromText(text) {
+    const t = String(text).replace(/\r/g, '');
+    const ms = [...t.matchAll(DATE_FIND)];
+    if (ms.length < 2) return [];
+    const rows = ms.map((m, i) => {
+        const seg = t.slice(m.index + m[0].length, i + 1 < ms.length ? ms[i + 1].index : t.length);
+        const nums = (seg.match(/-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?/g) || []).map(x => parseFloat(x.replace(/,/g, '')));
+        return { date: normalizeDate(m[0]), nums };
+    }).filter(r => r.date && r.nums.length);
+    const cnt = new Map();
+    rows.forEach(r => cnt.set(r.nums.length, (cnt.get(r.nums.length) || 0) + 1));
+    const N = [...cnt.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+    if (!N) return [];
+    // 用表頭決定第幾個數字是價格
+    let idx = -1;
+    const head = t.slice(0, ms[0].index).replace(/adj\.?\s+close/ig, 'AdjClose').split(/\s+/).map(x => x.replace(/[*＊]/g, '')).filter(Boolean);
+    const di = head.map(h => /^(日期|date|交易日期|交易日|交易週別?|週別|週次|時間)$/i.test(h)).lastIndexOf(true);
+    if (di >= 0) {
+        const cols = head.slice(di + 1);
+        let p = cols.findIndex(h => /adj|調整|還原/i.test(h));
+        if (p < 0) p = cols.findIndex(h => /^close$|收市|收盤|^成交價?$|^price$|價格|淨值|^nav$|指數/i.test(h));
+        if (p >= 0 && p < N) idx = p;
+    }
+    if (idx < 0) idx = N === 6 ? 4 : N === 5 ? 3 : N === 1 ? 0 : -1;   // 無表頭：Yahoo（開高低收、調整後收、量）
+    if (idx < 0) return [];
+    const map = new Map();
+    rows.forEach(r => { if (r.nums.length === N && r.nums[idx] > 0) map.set(r.date, r.nums[idx]); });
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+function parsePriceText(text) {
+    let prices = /\t/.test(text) ? pricesFromRows(String(text).split(/\r?\n/).map(l => l.split('\t'))) : [];
+    if (prices.length < 2) prices = pricesFromRows(parseCSV(text));
+    if (prices.length < 2) prices = pricesFromText(text);
+    return prices;
+}
+// 合併新舊價格：以重疊日期把舊資料等比例對齊（調整後收盤價每次配息都會整段重算）
+function mergePrices(oldP, newP) {
+    if (!oldP || !oldP.length) return { prices: newP, warn: '' };
+    const nm = new Map(newP);
+    const overlap = oldP.filter(([d]) => nm.has(d));
+    let k = 1, warn = '';
+    if (overlap.length) { const [d, v] = overlap[overlap.length - 1]; k = nm.get(d) / v; }
+    else if (newP[0][0] > oldP[oldP.length - 1][0] || newP[newP.length - 1][0] < oldP[0][0]) warn = '（新舊資料沒有重疊日期，下次貼上時請多包含幾筆舊日期）';
+    const m = new Map(oldP.map(([d, v]) => [d, v * k]));
+    newP.forEach(([d, v]) => m.set(d, v));
+    return { prices: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])), warn };
+}
+function applyBench(prices, name, merge) {
+    if (prices.length < 2) { toast('⚠️ 讀不到價格資料。請連同表頭（日期、收盤價那一列）一起複製，或改用 Goodinfo / 證交所的 CSV', 5000); return false; }
+    const { prices: merged, warn } = merge && bench ? mergePrices(bench.prices, prices) : { prices, warn: '' };
+    bench = { name: (bench && bench.name) || name, prices: merged };
+    saveBench(); A = analyze(); renderAnalysis();
+    toast(`已匯入 ${prices.length} 筆價格，基準資料 ${merged[0][0]} ~ ${merged[merged.length - 1][0]}${warn}`, 4000);
+    return true;
+}
 $('benchInput').addEventListener('change', async e => {
-    const file = e.target.files[0];
+    const files = [...e.target.files];
     e.target.value = '';
-    if (!file) return;
-    try {
-        const { text } = await readFileText(file);
-        const rows = parseCSV(text);
-        const h = (rows[0] || []).map(x => String(x).replace(/^﻿/, '').trim().toLowerCase());
-        const findCol = names => { for (const n of names) { const i = h.indexOf(n); if (i >= 0) return i; } return -1; };
-        let dc = findCol(['date', '日期', '交易日期', '時間', 'datetime']);
-        let pc = findCol(['adj close', 'adj_close', 'adjclose', '還原收盤價', '調整後收盤價', '還原價', 'close', '收盤價', '收盤', 'price', '價格', '淨值', 'nav']);
-        let start = 1;
-        if (dc < 0 || pc < 0) { dc = 0; pc = 1; start = normalizeDate((rows[0] || [])[0]) ? 0 : 1; }
-        const map = new Map();
-        for (let i = start; i < rows.length; i++) {
-            const d = normalizeDate(rows[i][dc]), p = parseAmount(rows[i][pc]);
-            if (d && p > 0) map.set(d, p);
-        }
-        const prices = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-        if (prices.length < 2) return toast('⚠️ 讀不到價格資料，請確認有日期與收盤價欄位', 3500);
-        bench = { name: (bench && bench.name) || file.name.replace(/\.[^.]+$/, '').slice(0, 20), prices };
-        saveBench(); A = analyze(); renderAnalysis();
-        toast(`已匯入基準 ${prices.length} 筆價格（${prices[0][0]} ~ ${prices[prices.length - 1][0]}）`, 3000);
+    if (!files.length) return;
+    try {   // 可一次選多個檔案（例如證交所每月一個 CSV），會自動合併
+        const all = new Map();
+        for (const f of files) parsePriceText((await readFileText(f)).text).forEach(([d, v]) => all.set(d, v));
+        const prices = [...all.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+        applyBench(prices, files[0].name.replace(/\.[^.]+$/, '').replace(/_基準$/, '').slice(0, 20), files.length > 1 && !!bench && confirmMerge());
     } catch (err) { toast('⚠️ 讀取失敗：' + err.message); }
 });
+const confirmMerge = () => confirm('要把這些檔案「合併」到現有基準嗎？\n按「取消」則改為取代現有基準。');
+function benchPasteGo() {
+    const text = ($('benchPaste') || {}).value || '';
+    if (!text.trim()) return toast('請先貼上價格表');
+    applyBench(parsePriceText(text), '基準', true);
+}
+function exportBench() {
+    if (!bench) return;
+    const csv = toCSV([['日期', '收盤價'], ...bench.prices.map(([d, v]) => [d, +v.toFixed(4)])]);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const fname = `${bench.name}_基準.csv`;
+    try {
+        const file = new File([blob], fname, { type: 'text/csv' });
+        if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: fname }).catch(() => {}); return; }
+    } catch (e) { /* 改用下載 */ }
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    toast('已匯出基準 CSV，可傳到手機用「改用 CSV 檔」匯入');
+}
 document.addEventListener('change', e => {
     if (e.target.id === 'benchName' && bench) { bench.name = cleanName(e.target.value) || '基準'; saveBench(); A = analyze(); renderAnalysis(); }
 });
@@ -1659,7 +2020,10 @@ function renderAssetSheet() {
             ${kpi('總賣出', fmt(a.sell), { cls: 'c-sell' })}
             ${kpi('總股息', fmt(a.div), { cls: 'c-div', sub: `股息 ÷ 投入 ${pct(a.divYield)}` })}
             ${kpi('持有期間', durText(a.holdDays), { sub: `${a.firstDate} 起` })}
+            ${a.ccy === 'USD' ? kpi('美元報酬 XIRR', pct(a.irrUsd), { cls: signCls(a.irrUsd), sub: `匯率影響 ${a.irr !== null && a.irrUsd !== null ? ((a.irr - a.irrUsd) * 100 >= 0 ? '+' : '') + ((a.irr - a.irrUsd) * 100).toFixed(2) + ' 百分點' : '--'}` }) +
+                kpi('匯率損益', fmtSigned(a.fxPnl), { cls: signCls(a.fxPnl), sub: `成本匯率 ${usdCfg(a.name) && usdCfg(a.name).costFx ? fmtRate(usdCfg(a.name).costFx) : '各筆'} → 目前 ${fmtRate(a.fxNow)}・美元淨損益 ${a.netUsd >= 0 ? '+' : '-'}${fmtUsd(a.netUsd)}` }) : ''}
         </div>
+        ${a.ccy === 'mixed' ? '<div class="banner">這個標的部分紀錄是台幣、部分是美元，無法計算美元報酬。可到「設定 → 美元資產匯率校正」統一換成美元紀錄。</div>' : ''}
         <div class="btn-row" style="margin:4px 0 8px">
             <button class="btn btn-secondary" data-action="asset-add">＋ 記一筆</button>
             <button class="btn btn-ghost" data-action="asset-cur">更新現值</button>
@@ -1667,7 +2031,7 @@ function renderAssetSheet() {
         <div class="section-label" style="margin-top:14px">交易紀錄（${recs.length} 筆）</div>
         <ul class="list">${recs.map(r => `<li><div class="row" data-rec="${r.id}">
             <div class="avatar av-${r.type}">${TYPE_SHORT[r.type]}</div>
-            <div class="row-main"><div class="row-title" style="font-weight:500">${TYPE_LABEL[r.type]}</div><div class="row-sub">${r.date}</div></div>
+            <div class="row-main"><div class="row-title" style="font-weight:500">${TYPE_LABEL[r.type]}</div><div class="row-sub">${r.date}${r.ccy === 'USD' ? ` · ${fmtUsd(r.orig)} @${fmtRate(r.rateUsed || r.fx)}` : ''}</div></div>
             <div class="row-end"><div class="v c-${r.type === 'dividend' ? 'div' : r.type === 'current' ? 'cur' : r.type}">${r.type === 'current' ? fmt(r.amount) : (r.type === 'buy' ? '-' : '+') + fmt(Math.abs(r.amount))}</div></div>
         </div></li>`).join('')}</ul>`;
 }
@@ -1712,10 +2076,10 @@ async function startImport() {
 
     const header = rows[0].map(h => String(h).replace(/^﻿/, '').trim().toLowerCase());
     const find = key => header.findIndex(h => HEADER_ALIASES[key].includes(h));
-    let col = { date: find('date'), name: find('name'), type: find('type'), amount: find('amount') }, start = 1;
+    let col = { date: find('date'), name: find('name'), type: find('type'), amount: find('amount'), ccy: find('ccy'), orig: find('orig'), fx: find('fx') }, start = 1;
     if (col.date < 0 || col.name < 0 || col.amount < 0) {
         const w = rows[0].length;
-        col = { date: 0, name: 1, type: w >= 4 ? 2 : -1, amount: w >= 4 ? 3 : 2 };
+        col = { date: 0, name: 1, type: w >= 4 ? 2 : -1, amount: w >= 4 ? 3 : 2, ccy: -1, orig: -1, fx: -1 };
         start = normalizeDate(rows[0][0]) ? 0 : 1;
     }
     const mode = document.querySelector('input[name=importMode]:checked').value;
@@ -1731,13 +2095,18 @@ async function startImport() {
         const row = rows[i];
         const date = normalizeDate(row[col.date]);
         const rawName = cleanName(row[col.name] ?? '');
-        const raw = parseAmount(row[col.amount]);
+        let raw = parseAmount(row[col.amount]);
+        const isUsd = col.ccy >= 0 && /usd|美/i.test(row[col.ccy] || '');
+        let uOrig = isUsd && col.orig >= 0 ? parseAmount(row[col.orig]) : NaN, uFx = isUsd && col.fx >= 0 ? parseAmount(row[col.fx]) : NaN;
+        if (isUsd && isNaN(raw) && !isNaN(uOrig) && uFx > 0) raw = uOrig * uFx;
+        if (isUsd && isNaN(uOrig) && !isNaN(raw) && uFx > 0) uOrig = raw / uFx;
         if (!date || !rawName || isNaN(raw)) { badRows.push(i + 1); continue; }
         const type = normalizeType(col.type >= 0 ? row[col.type] : null, raw);
         if (!type) { badRows.push(i + 1); continue; }
         const k = normKey(rawName);
         if (!nameMap.has(k)) nameMap.set(k, rawName);
         const rec = { date, name: nameMap.get(k), type, amount: signAmount(type, raw) };
+        if (isUsd && !isNaN(uOrig) && uFx > 0) Object.assign(rec, { ccy: 'USD', orig: signAmount(type, uOrig), fx: uFx });
         const rk = keyOf(rec);
         if (skipDup && existing.get(rk) > 0) { existing.set(rk, existing.get(rk) - 1); dupCount++; continue; }
         imported.push(rec);
@@ -1756,7 +2125,8 @@ async function startImport() {
 $('btnExport').addEventListener('click', exportCSV);
 async function exportCSV() {
     if (!records.length) return toast('目前沒有資料');
-    const csv = toCSV([['日期', '名稱', '類型', '金額'], ...records.map(r => [r.date, r.name, TYPE_LABEL[r.type], r.amount])]);
+    const csv = toCSV([['日期', '名稱', '類型', '金額', '幣別', '原幣金額', '匯率'],
+        ...records.map(r => [r.date, r.name, TYPE_LABEL[r.type], r.amount, r.ccy === 'USD' ? 'USD' : '', r.ccy === 'USD' ? r.orig : '', r.ccy === 'USD' ? (r.rateUsed || r.fx) : ''])]);
     const fname = `投資紀錄備份_${todayStr()}.csv`;
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
     const done = () => { settings.lastExport = todayStr(); saveSettings(); if (currentTab === 'settings') renderSettings(); };
@@ -1787,6 +2157,10 @@ $('btnRename').addEventListener('click', () => {
     const n = records.filter(r => r.name === from).length;
     if (!confirm(`將「${from}」的 ${n} 筆紀錄${res.matched ? '合併到既有標的' : '更名為'}「${res.name}」？`)) return;
     records.forEach(r => { if (r.name === from) r.name = res.name; });
+    if (settings.usd && settings.usd[from]) {   // 美元設定跟著改名
+        if (!settings.usd[res.name]) settings.usd[res.name] = settings.usd[from];
+        delete settings.usd[from]; saveSettings();
+    }
     $('renameTo').value = '';
     commit();
     toast(res.matched ? `已合併到「${res.name}」` : `已更名為「${res.name}」`);
@@ -1817,8 +2191,70 @@ $('btnInstall').addEventListener('click', async () => {
     deferredInstall = null; renderSettings();
 });
 
+function renderUsdSettings() {
+    settings.usd = settings.usd || {};
+    $('usdNow').value = settings.usdNow || '';
+    $('usdNowNote').textContent = settings.usdNow ? `最新市值與報酬分析都用這個匯率換算（更新於 ${settings.usdNowDate || '--'}）。` : '尚未設定。最新市值與報酬分析都會用這個匯率換算。';
+    const names = Object.keys(settings.usd).filter(n => records.some(r => r.name === n)).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+    $('usdList').innerHTML = names.length ? names.map(n => {
+        const lc = records.find(r => r.name === n && r.type === 'current' && r.ccy === 'USD');
+        const cnt = records.filter(r => r.name === n).length;
+        return `<div class="usd-row"><div class="row-main"><b>${escapeHtml(n)}</b><div class="row-sub">${lc ? `美元市值 ${fmtUsd(lc.orig)}・` : ''}${cnt} 筆</div></div>
+            <div class="usd-fx">成本平均匯率<br><input type="text" inputmode="decimal" data-usd-cost="${escapeHtml(n)}" value="${settings.usd[n].costFx || ''}" placeholder="未設定"></div>
+            <button class="link-btn" data-action="usd-remove" data-name="${escapeHtml(n)}">移除</button></div>`;
+    }).join('') : '<p class="note">目前沒有美元標的，可從下方加入。</p>';
+    const others = [...new Set(records.map(r => r.name))].filter(n => !settings.usd[n]).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+    const prev = $('usdAddName').value;
+    $('usdAddName').innerHTML = others.length ? others.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') : '<option value="">（沒有其他標的）</option>';
+    const guess = others.find(n => /^[A-Z]{2,5}$/.test(n));
+    $('usdAddName').value = others.includes(prev) ? prev : (guess || others[0] || '');
+}
+$('usdNow').addEventListener('change', e => {
+    const v = parseAmount(e.target.value);
+    if (!(v > 0)) { e.target.value = settings.usdNow || ''; return toast('請輸入正確的匯率'); }
+    settings.usdNow = v; settings.usdNowDate = todayStr(); saveSettings(); commit();
+    toast(`目前匯率已設為 ${fmtRate(v)}`);
+});
+$('btnUsdNow').addEventListener('click', async () => {
+    setStatus('usdStatus', '抓取最新匯率中…');
+    const r = await fetchUsdTwd(todayStr());
+    if (!r) return setStatus('usdStatus', '⚠️ 抓不到匯率（可能離線），請手動輸入。', 'warn');
+    settings.usdNow = r.rate; settings.usdNowDate = r.date; saveSettings(); commit();
+    setStatus('usdStatus', `✅ 目前匯率 ${fmtRate(r.rate)}（${r.date} 市場中間價）`, 'ok');
+});
+$('usdList').addEventListener('change', e => {
+    const n = e.target.dataset.usdCost; if (!n) return;
+    const v = parseAmount(e.target.value);
+    settings.usd[n] = { ...(settings.usd[n] || {}), costFx: v > 0 ? v : null };
+    saveSettings(); commit();
+    toast(v > 0 ? `${n} 成本平均匯率設為 ${fmtRate(v)}` : `${n} 改用每筆紀錄的匯率`);
+});
+$('btnUsdAdd').addEventListener('click', () => {
+    const n = $('usdAddName').value, cost = parseAmount($('usdCostFx').value), old = parseAmount($('usdOldRate').value);
+    if (!n) return;
+    if (!(cost > 0)) { $('usdCostFx').focus(); return toast('請輸入歷史成本平均匯率'); }
+    if (!(old > 0)) { $('usdOldRate').closest('details').open = true; $('usdOldRate').focus(); return toast('請輸入現有紀錄當初的換算匯率'); }
+    const recs = records.filter(r => r.name === n && r.ccy !== 'USD');
+    const nowTxt = settings.usdNow ? `最新市值用目前匯率 ${fmtRate(settings.usdNow)}` : '最新市值請再設定上方的目前匯率';
+    if (!confirm(`把「${n}」設為美元標的？\n・現有 ${recs.length} 筆紀錄 ÷ ${old} 還原成美元金額\n・成本用 ${fmtRate(cost)} 換算成台幣\n・${nowTxt}`)) return;
+    recs.forEach(r => Object.assign(r, { ccy: 'USD', orig: Math.round(r.amount / old * 10000) / 10000, fx: old }));
+    settings.usd = settings.usd || {};
+    settings.usd[n] = { costFx: cost, oldFx: old };
+    $('usdCostFx').value = '';
+    saveSettings(); commit();
+    toast(`已將 ${n} 設為美元標的（成本匯率 ${fmtRate(cost)}）`);
+});
+function removeUsdAsset(n) {
+    if (!confirm(`把「${n}」改回台幣標的？\n目前換算後的台幣金額會保留，美元金額會刪除。`)) return;
+    records.forEach(r => { if (r.name === n) { delete r.ccy; delete r.orig; delete r.fx; delete r.rateUsed; } });
+    delete settings.usd[n];
+    saveSettings(); commit();
+    toast(`${n} 已改回台幣標的`);
+}
+
 function renderSettings() {
     $('setCount').textContent = records.length;
+    renderUsdSettings();
     const days = settings.lastExport ? dayNum(todayStr()) - dayNum(settings.lastExport) : null;
     $('backupNote').textContent = settings.lastExport ? `上次備份：${settings.lastExport}（${days} 天前）${days > 30 ? '，建議重新備份' : ''}` : '尚未備份過，建議定期匯出 CSV，換手機時才能還原。';
     const idx = nameIndex().sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
@@ -1864,6 +2300,11 @@ document.addEventListener('click', e => {
         else if (a === 'batch') openRecordEditor({ mode: 'batch' });
         else if (a === 'go-settings') switchTab('settings');
         else if (a === 'bench-pick') $('benchInput').click();
+        else if (a === 'bench-paste') { const p = $('benchPastePanel'); p.hidden = !p.hidden; if (!p.hidden) $('benchPaste').focus(); }
+        else if (a === 'bench-paste-cancel') $('benchPastePanel').hidden = true;
+        else if (a === 'bench-paste-go') benchPasteGo();
+        else if (a === 'bench-export') exportBench();
+        else if (a === 'usd-remove') removeUsdAsset(act.dataset.name);
         else if (a === 'bench-remove') { if (confirm('確定移除比較基準？')) { bench = null; saveBench(); A = analyze(); renderAnalysis(); } }
         else if (a === 'asset-add') openRecordEditor({ name: assetSheetName });
         else if (a === 'asset-cur') openRecordEditor({ name: assetSheetName, type: 'current' });
@@ -1883,10 +2324,12 @@ window.addEventListener('unhandledrejection', e => toast('⚠️ 發生錯誤：
 
 // 啟動
 loadSettings();
+loadFx();
 applyTheme();
 loadRecords();
 loadBench();
 sortRecords();
+recomputeUsd();
 A = analyze();
 switchTab((location.hash || '#home').slice(1));
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

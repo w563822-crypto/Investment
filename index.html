@@ -510,7 +510,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div class="section-label">危險區</div>
             <div class="card"><button class="btn btn-danger" id="btnClear">清除全部紀錄</button></div>
-            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5</p>
+            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5.1</p>
         </section>
     </main>
 
@@ -1989,7 +1989,7 @@ function exportBench() {
     const fname = `${bench.name}_基準.csv`;
     try {
         const file = new File([blob], fname, { type: 'text/csv' });
-        if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: fname }).catch(() => {}); return; }
+        if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file] }).catch(() => {}); return; }   // 只傳檔案，避免 iOS 存成「文字.txt」
     } catch (e) { /* 改用下載 */ }
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
@@ -2159,7 +2159,8 @@ async function exportCSV() {
     try {
         const file = new File([blob], fname, { type: 'text/csv' });
         if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: fname });
+            // 只分享檔案本身：iOS 若同時帶 title/text，「儲存到檔案」會只存成「文字.txt」（內容是檔名）
+            await navigator.share({ files: [file] });
             done(); return;
         }
     } catch (e) { if (e.name === 'AbortError') return; }

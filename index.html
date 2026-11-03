@@ -321,8 +321,8 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
                 </div>
                 <div class="kpis" id="homeKpis"></div>
                 <div class="card">
-                    <div class="card-title">市值 vs 投入成本</div>
-                    <div class="chart-box"><canvas id="chValue" aria-label="市值與累計淨投入走勢圖"></canvas></div>
+                    <div class="card-title">市值 vs 自己淨投入</div>
+                    <div class="chart-box"><canvas id="chValue" aria-label="市值與自己淨投入走勢圖"></canvas></div>
                     <div class="note" id="chValueNote"></div>
                 </div>
                 <div class="card">
@@ -510,7 +510,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div class="section-label">危險區</div>
             <div class="card"><button class="btn btn-danger" id="btnClear">清除全部紀錄</button></div>
-            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5.4</p>
+            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5.5</p>
         </section>
     </main>
 
@@ -1092,7 +1092,8 @@ function analyze() {
     }
     for (const a of assets) a.weight = T.cur > 0 && a.curVal > 0 ? a.curVal / T.cur : 0;
     T.net = T.buy + T.sell + T.div + T.cur;
-    T.roi = T.buy !== 0 ? T.net / -T.buy : null;
+    T.netIn = -(T.buy + T.sell + T.div);                    // 自己淨投入：買入 − 賣出 − 股息（再投入的錢不重複算）
+    T.roi = T.netIn > 0 ? T.net / T.netIn : null;          // 累計報酬率 = 淨損益 ÷ 自己淨投入
     T.irr = xirr(xFlowsAll);
     T.irrShort = T.irr !== null && spanDays(xFlowsAll) < 365;
     const curDates = assets.filter(a => a.curDate).map(a => a.curDate).sort();
@@ -1138,11 +1139,10 @@ function analyze() {
     const twr = computeTWR(series, tradeFlows, rf);
     if (twr) twr.skipped = allSnapDates.length - snapDates.length;
 
-    // 累計淨投入（買入 − 賣出，不含股息）
+    // 自己淨投入（買入 − 賣出 − 股息）：股息拿去再投入時會記成買入，扣掉才不會重複算
     const invested = [];
     let inv = 0;
     for (const f of tradeFlows) {
-        if (f.type === 'dividend') continue;
         inv += -f.amount;
         if (invested.length && invested[invested.length - 1].date === f.date) invested[invested.length - 1].v = inv;
         else invested.push({ date: f.date, v: inv });
@@ -1648,14 +1648,14 @@ function renderHome() {
     const { T, twr, divs } = A;
     $('heroValue').textContent = fmt(T.cur);
     $('heroAsOf').textContent = T.asOf ? `（估值日 ${T.asOf}）` : '';
-    $('heroPL').textContent = `${T.net >= 0 ? '▲' : '▼'} ${fmtSigned(T.net)}（${pctSigned(T.roi)}）`;
+    $('heroPL').textContent = `${T.net >= 0 ? '▲' : '▼'} ${fmtSigned(T.net)}` + (T.roi !== null ? `（${pctSigned(T.roi)}）` : '');
     $('heroXirr').textContent = pct(T.irr) + (T.irrShort ? '*' : '');
     $('heroRoi').textContent = pctSigned(T.roi);
     $('heroDiv').textContent = fmt(T.div);
 
     $('homeKpis').innerHTML = [
-        kpi('總投入成本', fmt(-T.buy), { sub: '累計買入金額' }),
-        kpi('已回收（賣出）', fmt(T.sell), { sub: '累計賣出金額' }),
+        kpi('自己淨投入', fmt(T.netIn), { sub: `買入 − 賣出 − 股息・報酬率 ${T.roi !== null ? pctSigned(T.roi) : '--'}` }),
+        kpi('累計買入', fmt(-T.buy), { sub: `含再投入・已賣出 ${fmt(T.sell)}` }),
         kpi('近 12 個月股息', fmt(divs.ttm), { sub: `月均 ${fmt(divs.monthly)}`, go: 'struct' }),
         kpi('目前殖利率', pct(divs.yieldNow), { sub: '近 12 月股息 ÷ 市值', go: 'struct' }),
         kpi('最大回撤', twr ? fmtDD(twr.mdd) : '--', { cls: twr && twr.mdd > 0 ? 'loss' : '', sub: twr ? `${twr.n} 期現值紀錄` : '需要現值紀錄', go: 'risk' }),
@@ -1703,9 +1703,9 @@ function renderValueChart() {
     const valData = dates.map(d => ({ x: ts(d), y: valMap.has(d) ? valMap.get(d) : null }));
     drawChart('chValue', timeChart(th, [
         lineDs('市值', valData, th.s[0], { pointRadius: A.series.length > 40 ? 0 : 2.5 }),
-        lineDs('累計淨投入', invData, th.muted, { stepped: 'after', borderDash: [5, 4], pointRadius: 0 })
+        lineDs('自己淨投入', invData, th.muted, { stepped: 'after', borderDash: [5, 4], pointRadius: 0 })
     ]));
-    $('chValueNote').textContent = A.series.length ? '累計淨投入 = 買入 − 賣出（不含股息）。市值點為你記錄現值的日期。' : '尚無現值紀錄，只顯示投入成本。';
+    $('chValueNote').textContent = A.series.length ? '自己淨投入 = 買入 − 賣出 − 股息（再投入的錢不重複算）。市值點為你記錄現值的日期。' : '尚無現值紀錄，只顯示投入成本。';
 }
 
 /* =====================================================================

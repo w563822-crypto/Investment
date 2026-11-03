@@ -1,5 +1,5 @@
 // 離線快取：更新 App 時把版本號 +1，手機就會抓新版
-const CACHE = 'invest-app-v2.1.0';
+const CACHE = 'invest-app-v2.5.4';
 const ASSETS = [
     './',
     './index.html',

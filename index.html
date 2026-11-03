@@ -510,7 +510,7 @@ details.glossary dd { margin: 2px 0 0; color: var(--text-2); line-height: 1.6; }
 
             <div class="section-label">危險區</div>
             <div class="card"><button class="btn btn-danger" id="btnClear">清除全部紀錄</button></div>
-            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5.1</p>
+            <p class="note center">資料只存在這台裝置的瀏覽器中，不會上傳到任何伺服器。<br>投資損益 v2.5.4</p>
         </section>
     </main>
 
@@ -706,7 +706,7 @@ function normalizeDate(v) {
         [y, m, d] = [+mt[1], +mt[2], +mt[3]];
     } else if ((mt = s.match(/^(\d{2,3})(\d{2})(\d{2})$/))) {
         [y, m, d] = [+mt[1] + 1911, +mt[2], +mt[3]];
-    } else if ((mt = s.match(/^(\d{2,4})\s*[\/\-.年]\s*(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})/))) {
+    } else if ((mt = s.match(/^(\d{2,4})\s*[\/\-.年]\s*(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})(?!\d)/))) {   // (?!\d)：15/01/2021 不可讀成 2015/01/20
         [y, m, d] = [+mt[1], +mt[2], +mt[3]];
         if (mt[1].length === 2) y = y >= 69 ? y + 1911 : y + 2000;   // 兩位數年：69 以上視為民國，其餘為 20xx
         else if (y < 1911) y += 1911;                                  // 三位數民國年
@@ -717,6 +717,34 @@ function normalizeDate(v) {
     const dt = new Date(Date.UTC(y, m - 1, d));
     if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
     return `${y}-${pad(m)}-${pad(d)}`;
+}
+// 整欄判斷日期順序：WPS / Excel 會依電腦的地區設定，把 2021-01-15 存成 15/01/2021（英式）、01/15/2021（美式）或 15/01/21
+// 單看一格常分不出來，所以整欄一起試：哪種讀法有效日期最多、日期最合理、前後順序最一致，就用哪種
+const NUM_DATE = /^\s*['＇"]?(\d{1,4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\s*$/;
+function ymdFrom(order, a, b, c) {
+    let y, m, d;
+    if (order === 'ymd') { y = +a; m = +b; d = +c; if (a.length <= 2) y = y >= 69 ? y + 1911 : y + 2000; else if (y < 1911) y += 1911; }
+    else { if (c.length !== 2 && c.length !== 4) return null; y = c.length === 2 ? +c + 2000 : +c; [d, m] = order === 'dmy' ? [+a, +b] : [+b, +a]; }
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+    return `${y}-${pad(m)}-${pad(d)}`;
+}
+function dateParserFor(samples) {
+    const parts = samples.map(s => String(s ?? '').match(NUM_DATE)).filter(p => p && p[1].length <= 2);   // 年份在前（2021/1/15、民國 110/1/15）不用猜
+    let best = null;
+    if (parts.length) {
+        const lo = '1990-01-01', hi = addDays(todayStr(), 366);
+        const score = order => {
+            const ds = parts.map(p => ymdFrom(order, p[1], p[2], p[3])).filter(Boolean);
+            let up = 0, down = 0;
+            for (let i = 1; i < ds.length; i++) { if (ds[i] < ds[i - 1]) up++; if (ds[i] > ds[i - 1]) down++; }
+            return [ds.length, ds.filter(d => d >= lo && d <= hi).length, -Math.min(up, down)];
+        };
+        const cand = ['ymd', 'dmy', 'mdy'].map((o, i) => ({ o, s: [...score(o), -i] }));   // 平手時依序偏好 年月日 > 日月年 > 月日年
+        cand.sort((x, y) => { for (let k = 0; k < 4; k++) if (x.s[k] !== y.s[k]) return y.s[k] - x.s[k]; return 0; });
+        if (cand[0].s[0] > 0) best = cand[0].o;
+    }
+    return v => { const p = String(v ?? '').match(NUM_DATE); return best && p && p[1].length <= 2 ? ymdFrom(best, p[1], p[2], p[3]) : normalizeDate(v); };
 }
 // 金額解析：去除千分位與貨幣符號；(1,000) 視為負數
 function parseAmount(v) {
@@ -1140,7 +1168,12 @@ function analyze() {
 
     // 基準模擬
     let bm = null;
-    if (bench && tradeFlows.length) {
+    const benchFrom = bench && bench.prices.length ? bench.prices[0][0] : null, benchTo = bench && bench.prices.length ? bench.prices[bench.prices.length - 1][0] : null;
+    const benchUsable = bench && tradeFlows.length && dayNum(benchFrom) - dayNum(tradeFlows[0].date) <= 31 && dayNum(endDate) - dayNum(benchTo) <= 120;
+    if (bench && tradeFlows.length && !benchUsable) {   // 價格沒涵蓋投資期間：所有日期都只能用同一個價格，算出來會是 0%，不如不比
+        bm = { name: bench.name, from: benchFrom, to: benchTo, count: bench.prices.length, unusable: true, coverageOk: false, perAsset: new Map() };
+    }
+    if (benchUsable) {
         const P = bench.prices, px = d => priceAt(P, d);
         const sim = simulateBench(tradeFlows, P, endDate);
         const valuePts = series.map(s => {
@@ -1167,7 +1200,7 @@ function analyze() {
         const firstFlow = tradeFlows[0].date;
         bm = {
             name: bench.name, from, to, count: P.length, irr: sim.irr, terminal: sim.terminal, valuePts, metrics, navPts, perAsset,
-            coverageOk: from <= firstFlow && dayNum(to) >= dayNum(endDate) - 10
+            coverageOk: dayNum(from) <= dayNum(firstFlow) + 31 && dayNum(to) >= dayNum(endDate) - 35
         };
     }
 
@@ -1821,7 +1854,8 @@ function renderBench() {
         <div class="card-title">比較基準</div>
         <div class="field"><label for="benchName">基準名稱</label><input type="text" id="benchName" value="${escapeHtml(bench.name)}"></div>
         <p class="note" style="margin:0">價格資料：${bm ? `${bm.from} ~ ${bm.to}，共 ${bm.count} 筆` : `${bench.prices.length} 筆`}</p>
-        ${bm && !bm.coverageOk ? `<p class="note" style="color:var(--warn)">⚠️ 基準資料沒有完整涵蓋你的投資期間（${A.tradeFlows[0].date} ~ ${endDate}），請貼上更早或更新的價格；超出範圍的日期暫以最接近的價格代替。</p>` : ''}
+        ${bm && bm.unusable ? `<p class="note" style="color:var(--warn)">⚠️ 價格資料涵蓋不到你的投資期間（${A.tradeFlows[0].date} ~ ${endDate}），無法比較。常見原因：只貼了最近幾筆，或檔案用 WPS / Excel 存過、日期格式被改掉。請按「改用 CSV 檔」重新匯入完整的價格檔。</p>`
+          : bm && !bm.coverageOk ? `<p class="note" style="color:var(--warn)">⚠️ 基準資料沒有完整涵蓋你的投資期間（${A.tradeFlows[0].date} ~ ${endDate}），請貼上更早或更新的價格；超出範圍的日期暫以最接近的價格代替。</p>` : ''}
         <div class="btn-row" style="margin-top:12px"><button class="btn btn-secondary" data-action="bench-paste">📋 貼上更新</button><button class="btn btn-ghost" data-action="bench-export">💾 匯出基準</button></div>
         ${pastePanel}
         <div class="btn-row" style="margin-top:10px"><button class="btn btn-ghost" data-action="bench-pick" style="min-height:40px;font-size:14px">📂 改用 CSV 檔</button><button class="btn btn-danger" data-action="bench-remove" style="min-height:40px;font-size:14px">移除基準</button></div>
@@ -1834,27 +1868,29 @@ function renderBench() {
 
     // 比較表
     const cols = [{ h: '我的' }, ...(bm ? [{ h: escapeHtml(bm.name) }] : []), { h: `定存 ${settings.rf}%` }];
-    const bmM = bm && bm.metrics;
+    const bmM = bm && bm.metrics, bmOk = bm && !bm.unusable;
     const row = (label, vals) => `<tr><td>${label}</td>${vals.map(v => `<td>${v}</td>`).join('')}</tr>`;
-    const flowSum = T.buy + T.sell + T.div, gotBack = T.sell + T.div;   // 三種情境的現金流完全相同
+    const flowSum = T.buy + T.sell + T.div, netIn = -flowSum;   // 三種情境的現金流完全相同；netIn = 自己淨投入（買入 − 賣出 − 股息）
+    const sub = t => `<div class="note" style="font-size:11px;margin:0">${t}</div>`;
     const signWan = x => `<span class="${signCls(x)}">${x > 0 ? '+' : x < 0 ? '-' : ''}${fmtWan(Math.abs(x))}</span>`;
     const pick = (mine, b, d) => (bm ? [mine, b, d] : [mine, d]);
     const colorPct = (r, signed) => r === null || r === undefined ? '--' : `<span class="${signCls(r)}">${signed ? pctSigned(r) : pct(r)}</span>`;
     $('cmpEnd').textContent = `至 ${endDate}`;
     $('cmpTable').innerHTML = `<thead><tr><th>指標</th>${cols.map(c => `<th>${c.h}</th>`).join('')}</tr></thead><tbody>
         ${row('年化 XIRR（含息）', pick(colorPct(T.irr), colorPct(bm && bm.irr), pct(rf)))}
-        ${row('淨損益（含息）', pick(signWan(T.net), bm ? signWan(bm.terminal + flowSum) : '', signWan(deposit.terminal + flowSum)))}
-        ${row('期末市值', pick(fmtWan(T.cur), bm ? fmtWan(bm.terminal) : '', fmtWan(deposit.terminal)))}
-        ${row('已領回（股息＋賣出）', pick(fmtWan(gotBack), bm ? fmtWan(gotBack) : '', fmtWan(gotBack)))}
+        ${row('自己淨投入' + sub('買入 − 賣出 − 股息'), pick(fmtWan(netIn), bmOk ? fmtWan(netIn) : '--', fmtWan(netIn)))}
+        ${row('期末市值', pick(fmtWan(T.cur), bmOk ? fmtWan(bm.terminal) : '--', fmtWan(deposit.terminal)))}
+        ${row('淨損益（含息）' + sub('期末市值 − 淨投入'), pick(signWan(T.net), bmOk ? signWan(bm.terminal + flowSum) : '--', signWan(deposit.terminal + flowSum)))}
         ${row('年化 TWR', pick(colorPct(twr && twr.ann), colorPct(bmM && bmM.ann), pct(rf)))}
         ${row('最大回撤', pick(fmtDD(twr && twr.mdd), fmtDD(bmM && bmM.mdd), '0%'))}
         ${row('年化波動', pick(pct(twr && twr.vol), pct(bmM && bmM.vol), '0%'))}
         ${row('夏普值', pick(ratio(twr && twr.sharpe), ratio(bmM && bmM.sharpe), '--'))}
     </tbody>`;
     const diff = (x, y) => `${x >= y ? '多' : '少'} ${fmt(Math.abs(x - y))}`;
-    let note = `你歷年領股息 ${fmt(T.div)}、賣出拿回 ${fmt(T.sell)}，三種情境都在同一天拿回同樣的錢，所以淨損益和 XIRR 都已含息。`;
-    if (bm) note += `若當初都改買「${bm.name}」，淨損益約 ${fmt(bm.terminal + flowSum)}，你的 ${fmt(T.net)}，${diff(T.net, bm.terminal + flowSum)}。`;
-    note += `存定存 ${settings.rf}% 則約 ${fmt(deposit.terminal + flowSum)}，你${diff(T.net, deposit.terminal + flowSum)}。`;
+    let note = `自己淨投入＝買入 ${fmt(-T.buy)} − 賣出拿回 ${fmt(T.sell)} − 領到股息 ${fmt(T.div)}＝${fmt(netIn)}，也就是你自己真正拿出來的錢。賣出和股息再投入時，模擬會在同一天賣出、再買回同樣金額，互相抵銷，等於一直抱著不動。${bm ? '基準自己的配息已含在還原價裡。' : ''}`;
+    if (bmOk) note += `同樣這 ${fmtWan(netIn)}，你現在是 ${fmtWan(T.cur)}，若都買「${bm.name}」會是 ${fmtWan(bm.terminal)}，${diff(T.cur, bm.terminal)}。`;
+    else if (bm) note = `⚠️ 「${bm.name}」的價格只有 ${bm.from} ~ ${bm.to}（${bm.count} 筆），涵蓋不到你 ${A.tradeFlows[0].date} 起的投資，無法比較，請到上方重新匯入完整的價格檔。` + note;
+    note += `存定存 ${settings.rf}% 則是 ${fmtWan(deposit.terminal)}，你${diff(T.cur, deposit.terminal)}。`;
     if (twr && twr.skipped) note += `TWR、回撤與波動只用所有持股都有更新現值的日期（略過 ${twr.skipped} 個只記部分標的的日期）。`;
     if (!twr || twr.n < 6) note += `目前只有 ${twr ? twr.n : 0} 期完整的現值紀錄，TWR、回撤與波動度還不準，請先以 XIRR 和淨損益比較。`;
     $('cmpNote').textContent = note;
@@ -1862,14 +1898,14 @@ function renderBench() {
     // 價值走勢
     if (A.series.length > 1) {
         const ds = [lineDs('我的市值', A.series.map(s => ({ x: ts(s.date), y: s.value })), th.s[0])];
-        if (bm) ds.push(lineDs(bm.name + ' 模擬', bm.valuePts.map(s => ({ x: ts(s.date), y: s.value })), th.s[1]));
+        if (bmOk) ds.push(lineDs(bm.name + ' 模擬', bm.valuePts.map(s => ({ x: ts(s.date), y: s.value })), th.s[1]));
         ds.push(lineDs(`定存 ${settings.rf}%`, deposit.valuePts.map(s => ({ x: ts(s.date), y: s.value })), th.s[2], { borderDash: [5, 4] }));
         drawChart('chCmp', timeChart(th, ds));
     } else drawChart('chCmp', null, '至少需要兩次現值紀錄');
 
     // 各標的 vs 基準
-    $('benchAssetsCard').hidden = !bm;
-    if (bm) {
+    $('benchAssetsCard').hidden = !bmOk;
+    if (bmOk) {
         const rows = A.assets.filter(a => a.irr !== null && bm.perAsset.get(a.name) !== null && bm.perAsset.get(a.name) !== undefined)
             .map(a => ({ a, b: bm.perAsset.get(a.name), d: a.irr - bm.perAsset.get(a.name) })).sort((x, y) => y.d - x.d);
         $('benchAssets').innerHTML = rows.length ? rows.map(({ a, b, d }) => `<li><div class="row" data-asset="${escapeHtml(a.name)}">
@@ -1901,23 +1937,24 @@ function pricesFromRows(rows) {
         const w = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
         if (w === 2) pc = 1; else if (w === 7) pc = 5; else return [];
     }
-    const map = new Map();
+    const map = new Map(), nd = dateParserFor(rows.slice(hi + 1).map(r => r[dc]));
     for (let i = hi + 1; i < rows.length; i++) {
-        const d = normalizeDate(rows[i][dc]), v = parseAmount(rows[i][pc]);
+        const d = nd(rows[i][dc]), v = parseAmount(rows[i][pc]);
         if (d && v > 0) map.set(d, v);   // 配息、分割等說明列會自動略過
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 // 備援解析：不靠分隔符號，直接在文字中找日期，再取其後的數字（處理網頁複製時一格一行或用空白分隔的情況）
-const DATE_FIND = /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}|['＇]?\b\d{2,3}\/\d{1,2}\/\d{1,2}|\b\d{2,4}W\d{1,2}\b|\b[A-Z][a-z]{2,8}\.?\s+\d{1,2},\s+\d{4}/g;
+const DATE_FIND = /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}|\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}\b|['＇]?\b\d{2,3}\/\d{1,2}\/\d{1,2}|\b\d{2,4}W\d{1,2}\b|\b[A-Z][a-z]{2,8}\.?\s+\d{1,2},\s+\d{4}/g;
 function pricesFromText(text) {
     const t = String(text).replace(/\r/g, '');
     const ms = [...t.matchAll(DATE_FIND)];
     if (ms.length < 2) return [];
+    const nd = dateParserFor(ms.map(m => m[0]));
     const rows = ms.map((m, i) => {
         const seg = t.slice(m.index + m[0].length, i + 1 < ms.length ? ms[i + 1].index : t.length);
         const nums = (seg.match(/-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?/g) || []).map(x => parseFloat(x.replace(/,/g, '')));
-        return { date: normalizeDate(m[0]), nums };
+        return { date: nd(m[0]), nums };
     }).filter(r => r.date && r.nums.length);
     const cnt = new Map();
     rows.forEach(r => cnt.set(r.nums.length, (cnt.get(r.nums.length) || 0) + 1));
@@ -1939,9 +1976,27 @@ function pricesFromText(text) {
     rows.forEach(r => { if (r.nums.length === N && r.nums[idx] > 0) map.set(r.date, r.nums[idx]); });
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
+// 手機複製表格常變成「一格一行」：依表頭欄數把各行組回表格（空白格也要保留成空行才組得回來）
+function pricesFromCells(text) {
+    const lines = String(text).replace(/\r/g, '').split('\n').map(l => l.trim());
+    const first = lines.findIndex(l => NUM_DATE.test(l) || /^\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}$/.test(l));
+    if (first < 2) return [];
+    const head = lines.slice(0, first).filter(Boolean), H = head.length;
+    const body = lines.slice(first);
+    while (body.length && !body[body.length - 1]) body.pop();
+    if (H < 2 || body.length < H) return [];
+    const rows = [head];
+    for (let i = 0; i < body.length; i += H) {
+        const chunk = body.slice(i, i + H);
+        if (!normalizeDate(chunk[0])) return [];
+        rows.push(chunk);
+    }
+    return pricesFromRows(rows);
+}
 function parsePriceText(text) {
     let prices = /\t/.test(text) ? pricesFromRows(String(text).split(/\r?\n/).map(l => l.split('\t'))) : [];
     if (prices.length < 2) prices = pricesFromRows(parseCSV(text));
+    if (prices.length < 2) prices = pricesFromCells(text);
     if (prices.length < 2) prices = pricesFromText(text);
     return prices;
 }
@@ -1953,16 +2008,19 @@ function mergePrices(oldP, newP) {
     let k = 1, warn = '';
     if (overlap.length) { const [d, v] = overlap[overlap.length - 1]; k = nm.get(d) / v; }
     else if (newP[0][0] > oldP[oldP.length - 1][0] || newP[newP.length - 1][0] < oldP[0][0]) warn = '（新舊資料沒有重疊日期，下次貼上時請多包含幾筆舊日期）';
-    const m = new Map(oldP.map(([d, v]) => [d, v * k]));
+    const lo = newP[0][0], hi = newP[newP.length - 1][0];   // 新資料涵蓋的期間以新資料為準（例如舊的「月中暫估」那一筆會被換掉）
+    const m = new Map(oldP.filter(([d]) => d < lo || d > hi || nm.has(d)).map(([d, v]) => [d, v * k]));
     newP.forEach(([d, v]) => m.set(d, v));
     return { prices: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])), warn };
 }
 function applyBench(prices, name, merge) {
     if (prices.length < 2) { toast('⚠️ 讀不到價格資料。請連同表頭（日期、收盤價那一列）一起複製，或改用 Goodinfo / 證交所的 CSV', 5000); return false; }
+    if (new Set(prices.map(p => p[1])).size < 2) { toast('⚠️ 讀到的價格全部一樣，可能選錯欄位，請確認價格欄的表頭', 5000); return false; }
     const { prices: merged, warn } = merge && bench ? mergePrices(bench.prices, prices) : { prices, warn: '' };
-    bench = { name: (bench && bench.name) || name, prices: merged };
+    bench = { name: (merge && bench && bench.name) || name, prices: merged };   // 取代時改用新檔名，合併時保留原名稱
     saveBench(); A = analyze(); renderAnalysis();
-    toast(`已匯入 ${prices.length} 筆價格，基準資料 ${merged[0][0]} ~ ${merged[merged.length - 1][0]}${warn}`, 4000);
+    if (A.bench && A.bench.unusable) toast(`⚠️ 基準資料只有 ${merged[0][0]} ~ ${merged[merged.length - 1][0]}，涵蓋不到你的投資期間，請匯入完整的價格檔`, 6000);
+    else toast(`已匯入 ${prices.length} 筆價格，基準資料 ${merged[0][0]} ~ ${merged[merged.length - 1][0]}${warn}`, 4000);
     return true;
 }
 $('benchInput').addEventListener('change', async e => {
@@ -1973,7 +2031,7 @@ $('benchInput').addEventListener('change', async e => {
         const all = new Map();
         for (const f of files) parsePriceText((await readFileText(f)).text).forEach(([d, v]) => all.set(d, v));
         const prices = [...all.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-        applyBench(prices, files[0].name.replace(/\.[^.]+$/, '').replace(/_基準$/, '').slice(0, 20), files.length > 1 && !!bench && confirmMerge());
+        applyBench(prices, files[0].name.replace(/\.[^.]+$/, '').replace(/_基準$/, '').replace(/[_\s-]*\d{4}\s*[-~～]\s*\d{4}$/, '').slice(0, 24), files.length > 1 && !!bench && confirmMerge());
     } catch (err) { toast('⚠️ 讀取失敗：' + err.message); }
 });
 const confirmMerge = () => confirm('要把這些檔案「合併」到現有基準嗎？\n按「取消」則改為取代現有基準。');
@@ -1989,7 +2047,7 @@ function exportBench() {
     const fname = `${bench.name}_基準.csv`;
     try {
         const file = new File([blob], fname, { type: 'text/csv' });
-        if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file] }).catch(() => {}); return; }   // 只傳檔案，避免 iOS 存成「文字.txt」
+        if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: fname }).catch(() => {}); return; }
     } catch (e) { /* 改用下載 */ }
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
@@ -2115,10 +2173,11 @@ async function startImport() {
     const nameMap = new Map(base.map(r => [normKey(r.name), r.name]));   // 名稱自動對應既有標的
 
     const imported = [], badRows = [];
+    const nd = dateParserFor(rows.slice(start).map(r => r[col.date]));
     let dupCount = 0;
     for (let i = start; i < rows.length; i++) {
         const row = rows[i];
-        const date = normalizeDate(row[col.date]);
+        const date = nd(row[col.date]);
         const rawName = cleanName(row[col.name] ?? '');
         let raw = parseAmount(row[col.amount]);
         const isUsd = col.ccy >= 0 && /usd|美/i.test(row[col.ccy] || '');
@@ -2159,8 +2218,7 @@ async function exportCSV() {
     try {
         const file = new File([blob], fname, { type: 'text/csv' });
         if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
-            // 只分享檔案本身：iOS 若同時帶 title/text，「儲存到檔案」會只存成「文字.txt」（內容是檔名）
-            await navigator.share({ files: [file] });
+            await navigator.share({ files: [file], title: fname });
             done(); return;
         }
     } catch (e) { if (e.name === 'AbortError') return; }
